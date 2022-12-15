@@ -1,0 +1,51 @@
+<html>
+    <head>
+        <script src="buidl.js"></script>
+        <script src="qrcode.js"></script>
+        <script>
+            const generatePair = () => {
+                let newPair = buidl.createP2PKH();
+                let address = newPair.addr;
+                let privateKey = newPair.pk;
+
+                return { address, privateKey }
+            }
+
+            const displayNewPair = () => {
+                const { address, privateKey } = generatePair();
+
+                document.getElementById("address").innerHTML = address;
+                document.getElementById("pk").innerHTML = privateKey;
+                
+                document.getElementById("address_qr").innerHTML = "";
+                document.getElementById("pk_qr").innerHTML = "";
+                
+                new QRCode(document.getElementById("address_qr"), address);
+                new QRCode(document.getElementById("pk_qr"), privateKey);
+            }
+
+            const displayPKDetails = (pk) => {
+                const details = buidl.getDetails(pk);
+                document.getElementById("wif").innerHTML = details;
+                console.log({details})
+            }
+
+            window.onload = () => displayPKDetails("KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1");
+        </script>
+    </head>
+    <body>
+        <button
+            onClick="javascript:displayNewPair()"
+            style="margin-bottom: 0.2rem;"
+        >Generate New Key Pair</button>
+        <table 
+            style="margin-bottom: 0.2rem;"
+        >
+            <tr><td>Address</td><td id="address"></td></tr>
+            <tr><td>Address QR</td><td id="address_qr"></td></tr>
+            <tr><td>Private Key</td><td id="pk"></td></tr>
+            <tr><td>Private Key QR</td><td id="pk_qr"></td></tr>
+        </table>
+        <span id="wif"></span>
+    </body>
+</html>
