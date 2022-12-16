@@ -38,8 +38,11 @@ def string_check(hashed, req, difficulty):
 def starts_with(hashed, req, difficulty):
     return hashed.hexdigest().startswith(req)
 
+dif_bytes = 0
+print(dif_bytes)
+
 def bin_check(hashed, req, difficulty):
-    return int(hashed.hexdigest(), base=16) & 0xFFFFFFFFFF == 0
+    return int.from_bytes(hashed.digest()[:difficulty], byteorder="little") | dif_bytes == 0
 
 def mining_test(check, difficulty=10, hashes=1000000, base_data="ToleyC4YwnEG71XeTWd1VfghZqdV2jM8SyZSmefhMjvY6dbbnX8N0Zrl4Qc0pRkY"):
     requirement = difficulty * "0"
@@ -55,7 +58,7 @@ def mining_test(check, difficulty=10, hashes=1000000, base_data="ToleyC4YwnEG71X
 
 if __name__ == "__main__":
     runs = 10
-    funcs = [starts_with, bin_check, string_check]
+    funcs = [bin_check, starts_with, string_check]
 
 
     for func in funcs:

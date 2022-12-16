@@ -82,7 +82,7 @@ class Transaction:
 
         @property
         def transaction_id(self):
-           return hashlib.sha256(json.dumps(self.to_dict(exclude_id=True), indent=2).encode()).hexdigest()
+           return hashlib.sha256(hashlib.sha256(json.dumps(self.to_dict(exclude_id=True), indent=2).encode()).digest()).hexdigest()
 
         def to_dict(self, exclude_id=False):
             tx = {}
@@ -166,24 +166,12 @@ class Transaction:
 
         return True
 
-identities = {
-    "farmer_1": BlockchainIdentity("1GTpnkyNdR8foqbdfgv8JkWxMgvDNRGxHV", "KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1"),
-    "manufacturer_1": BlockchainIdentity("1G6zJsQy7WxpySxjovkidSb8aaZsMaTqaC", "KyMgXMMeMPvDtbpEcC4qxZ4e9NMFcCCYB1HwUkj3mXZJXzYuoLBE"),
-    "wholesaler_1": BlockchainIdentity("1MRHcvxBaqiiAVYCGG8F2Dom4xoRnutLGZ", "KzGwaUyL3wTm7DrhVSNBLZgYczAH8R5kX6yicycN4B6zcaGbQLKK"),
-    "retailer_1": BlockchainIdentity("1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq", "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8")
-}
-
-class Blockchain:
-    def __init__(self):
-        self.blocks = []
-
 class MerkleTree:
     def __init__(self):
         self.hashes = []
     
     def __hash_data(self, data):
-        # do I need to double hash?
-        return hashlib.sha256(str(data).encode()).hexdigest()
+        return hashlib.sha256(hashlib.sha256(str(data).encode()).digest()).hexdigest()
 
     def add_data(self, data):
         hashed =  self.__hash_data(data)
@@ -246,4 +234,9 @@ class Block:
             "merkle_tree_root": self.merkle_tree_root
         }
 
-
+identities = {
+    "farmer_1": BlockchainIdentity("1GTpnkyNdR8foqbdfgv8JkWxMgvDNRGxHV", "KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1"),
+    "manufacturer_1": BlockchainIdentity("1G6zJsQy7WxpySxjovkidSb8aaZsMaTqaC", "KyMgXMMeMPvDtbpEcC4qxZ4e9NMFcCCYB1HwUkj3mXZJXzYuoLBE"),
+    "wholesaler_1": BlockchainIdentity("1MRHcvxBaqiiAVYCGG8F2Dom4xoRnutLGZ", "KzGwaUyL3wTm7DrhVSNBLZgYczAH8R5kX6yicycN4B6zcaGbQLKK"),
+    "retailer_1": BlockchainIdentity("1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq", "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8")
+}
