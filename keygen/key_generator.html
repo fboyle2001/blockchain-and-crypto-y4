@@ -26,11 +26,8 @@
 
             const displayPKDetails = (pk) => {
                 const details = buidl.getDetails(pk);
-                document.getElementById("wif").innerHTML = details;
                 console.log({details})
             }
-
-            window.onload = () => displayPKDetails("KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1");
         </script>
     </head>
     <body>
@@ -46,6 +43,5 @@
             <tr><td>Private Key</td><td id="pk"></td></tr>
             <tr><td>Private Key QR</td><td id="pk_qr"></td></tr>
         </table>
-        <span id="wif"></span>
     </body>
 </html>
