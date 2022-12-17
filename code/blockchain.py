@@ -130,17 +130,17 @@ class Transaction:
     class Content:
         @dataclass
         class TXInput:
-            idx: int
             txid: str
             resource: str
             quantity: int
+            idx: Optional[int] = None
         
         @dataclass
         class TXOutput:
-            idx: int
             receiver: str
             resource: str
             quantity: int
+            idx: Optional[int] = None
 
         timestamp: float
         tx_type: str
@@ -156,7 +156,7 @@ class Transaction:
             "txid": self.txid,
             "header": self.header.__dict__,
             "content": self.content.__dict__
-        }, indent=2)
+        }, default=lambda x: getattr(x, "__dict__", str(x)), indent=2)
 
     def validate(self) -> bool:
         """
@@ -167,7 +167,7 @@ class Transaction:
         idless_tx_str = json.dumps({
             "header": self.header.__dict__,
             "content": self.content.__dict__
-        })
+        }, default=lambda x: getattr(x, "__dict__", str(x)))
 
         computed_txid = hashlib.sha256(hashlib.sha256(json.dumps(idless_tx_str).encode()).digest()).hexdigest()
 
@@ -175,7 +175,7 @@ class Transaction:
             return False
         
         # Now check the signature
-        tx_content_str = json.dumps(self.content.__dict__)
+        tx_content_str = json.dumps(self.content.__dict__, default=lambda x: getattr(x, "__dict__", str(x)))
         verifying_key = ecdsa.VerifyingKey.from_string(bytes.fromhex(self.header.sender_public_key), curve=ecdsa.SECP256k1, hashfunc=hashlib.sha256)
         verified = verify_signature(verifying_key, self.header.signature, tx_content_str)
 
@@ -193,14 +193,34 @@ class Transaction:
         **This does not validate the inp and out, this is the responsibilty of the miner!**
         """
 
+        indexed_inp = [
+            Transaction.Content.TXInput(
+                ip.txid,
+                ip.resource,
+                ip.quantity,
+                idx
+            )
+            for idx, ip in enumerate(inp)
+        ]
+
+        indexed_out = [
+            Transaction.Content.TXOutput(
+                op.receiver,
+                op.resource,
+                op.quantity,
+                idx
+            )
+            for idx, op in enumerate(out)
+        ]
+
         content = Transaction.Content(
             timestamp=datetime.datetime.now().timestamp(),
             tx_type=tx_type,
-            inp=inp,
-            out=out
+            inp=indexed_inp,
+            out=indexed_out
         )
 
-        tx_content_str = json.dumps(content.__dict__)
+        tx_content_str = json.dumps(content.__dict__, default=lambda x: getattr(x, "__dict__", str(x)))
         signature = sender.sign(tx_content_str)
 
         header = Transaction.Header(
@@ -213,7 +233,7 @@ class Transaction:
         idless_tx_str = json.dumps({
             "header": header.__dict__,
             "content": content.__dict__
-        })
+        }, default=lambda x: getattr(x, "__dict__", str(x)))
 
         txid = hashlib.sha256(hashlib.sha256(json.dumps(idless_tx_str).encode()).digest()).hexdigest()
         return Transaction(txid, header, content)
@@ -227,9 +247,31 @@ identities = {
 
 tx = Transaction.create_new_transaction(
     sender=identities["farmer_1"],
-    inp=[],
-    out=[],
-    tx_type=""
+    inp=[
+        Transaction.Content.TXInput(
+            txid="Fake",
+            resource="wheat",
+            quantity=500
+        ),
+        Transaction.Content.TXInput(
+            txid="FakeAgain",
+            resource="money",
+            quantity=5000
+        )
+    ],
+    out=[
+        Transaction.Content.TXOutput(
+            receiver=identities["manufacturer_1"].public_address,
+            resource="money",
+            quantity=400
+        ),
+        Transaction.Content.TXOutput(
+            receiver=identities["wholesaler_1"].public_address,
+            resource="money",
+            quantity=4000
+        )
+    ],
+    tx_type="??"
 )
 
 print(tx)
