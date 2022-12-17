@@ -6,7 +6,7 @@ import ecdsa
 import json
 import datetime
 import base58
-import threading
+import multiprocessing
 import time
 
 assert "sha256" in hashlib.algorithms_available, "SHA256 is required for but it is unavailable on your system"
@@ -368,12 +368,38 @@ _tx = Transaction.create_new_transaction(
     tx_type="??"
 )
 
+
+
+def multi_process_mine(completed, block):
+    md = block.get_mallable_mining_str()
+    req = "0" * block.header.difficulty
+    
+    nonce = 0
+    chk_time = time.time()
+    start_time = time.time()
+
+    while True and completed.value == False:
+        c = md + str(nonce) + "}"
+        header_hash = hashlib.sha256(hashlib.sha256(c.encode()).digest()).hexdigest()
+
+        if header_hash.startswith(req):
+            block.set_mined_information(header_hash, nonce)
+            completed.value = True
+            print(nonce, header_hash, block.header.merkle_root)
+            break
+
+        if nonce % 1000000 == 0 and nonce != 0:
+            delta = time.time() - chk_time
+            print("Time taken for 1000000 hashes", delta)
+            chk_time = time.time()
+
+        nonce += 1
+
 if __name__ == "__main__":
     # print(tx)
     # print("Validated integrity:", tx.validate_integrity())
 
-    difficulty = 6
-    req = "0" * difficulty
+    difficulty = 4
 
     _block = Block.create_unmined_block(
         miner=identities["retailer_1"],
@@ -389,35 +415,45 @@ if __name__ == "__main__":
         transactions=[_tx]
     )
 
-    import copy
-
-    def faster_mine(block):
-        md = block.get_mallable_mining_str()
+    # def faster_mine(block):
+    #     md = block.get_mallable_mining_str()
         
-        nonce = 0
-        chk_time = time.time()
-        start_time = time.time()
+    #     nonce = 0
+    #     chk_time = time.time()
+    #     start_time = time.time()
 
-        while True:
-            c = md + str(nonce) + "}"
-            header_hash = hashlib.sha256(hashlib.sha256(c.encode()).digest()).hexdigest()
+    #     while True:
+    #         c = md + str(nonce) + "}"
+    #         header_hash = hashlib.sha256(hashlib.sha256(c.encode()).digest()).hexdigest()
 
-            if header_hash.startswith(req):
-                block.set_mined_information(header_hash, nonce)
-                break
+    #         if header_hash.startswith(req):
+    #             block.set_mined_information(header_hash, nonce)
+    #             break
 
-            if nonce % 1000000 == 0 and nonce != 0:
-                delta = time.time() - chk_time
-                print("Time taken for 1000000 hashes", delta)
-                chk_time = time.time()
+    #         if nonce % 1000000 == 0 and nonce != 0:
+    #             delta = time.time() - chk_time
+    #             print("Time taken for 1000000 hashes", delta)
+    #             chk_time = time.time()
 
-            nonce += 1
+    #         nonce += 1
 
-        print(block)
-        print("Mined in:", time.time() - start_time, "s")
-        print("Nonce:", block.header.nonce)
-        print("Valid:", block.validate_integrity())
-        print()
+    #     print(block)
+    #     print("Mined in:", time.time() - start_time, "s")
+    #     print("Nonce:", block.header.nonce)
+    #     print("Valid:", block.validate_integrity())
+    #     print()
 
-    faster_mine(copy.deepcopy(_block))
-    faster_mine(copy.deepcopy(_block_2))
+    _completed = multiprocessing.Value("b", False)
+
+    m_1 = multiprocessing.Process(target=multi_process_mine, args=(_completed, _block))
+    m_2 = multiprocessing.Process(target=multi_process_mine, args=(_completed, _block_2))
+
+    m_1.start()
+    m_2.start()
+    m_1.join()
+    m_2.join()
+
+    print(_block)
+    print(_block.header.nonce)
+    print(_block_2)
+    print(_block_2.header.nonce)
