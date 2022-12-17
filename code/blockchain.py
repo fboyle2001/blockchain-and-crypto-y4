@@ -1,4 +1,4 @@
-from typing import Dict, List, Any, Optional
+from typing import List, Optional
 from dataclasses import dataclass
 
 import hashlib
@@ -6,13 +6,9 @@ import ecdsa
 import json
 import datetime
 import base58
-import time
-import copy
 
-assert "sha256" in hashlib.algorithms_available, "SHA256 is unavailable"
-assert "ripemd160" in hashlib.algorithms_available , "RIPEMD160 is unavailable"
-
-GLOBAL_INDENT = 2
+assert "sha256" in hashlib.algorithms_available, "SHA256 is required for but it is unavailable on your system"
+assert "ripemd160" in hashlib.algorithms_available , "RIPEMD160 is required for but it is unavailable on your system"
 
 def verify_signature(verifying_key: ecdsa.VerifyingKey, signature: str, message: str) -> bool:
     try:
@@ -154,19 +150,20 @@ class Transaction:
     def __str__(self) -> str:
         return json.dumps({
             "txid": self.txid,
-            "header": self.header.__dict__,
-            "content": self.content.__dict__
+            "header": self.header,
+            "content": self.content
         }, default=lambda x: getattr(x, "__dict__", str(x)), indent=2)
 
-    def validate(self) -> bool:
+    def validate_integrity(self) -> bool:
         """
         Validate the txid is correct for the {header, content} and the signature validates the {content}
         """
 
         # First check the txid
+        # Recursive JSON trick from https://stackoverflow.com/a/49003922
         idless_tx_str = json.dumps({
-            "header": self.header.__dict__,
-            "content": self.content.__dict__
+            "header": self.header,
+            "content": self.content
         }, default=lambda x: getattr(x, "__dict__", str(x)))
 
         computed_txid = hashlib.sha256(hashlib.sha256(json.dumps(idless_tx_str).encode()).digest()).hexdigest()
@@ -175,7 +172,7 @@ class Transaction:
             return False
         
         # Now check the signature
-        tx_content_str = json.dumps(self.content.__dict__, default=lambda x: getattr(x, "__dict__", str(x)))
+        tx_content_str = json.dumps(self.content, default=lambda x: getattr(x, "__dict__", str(x)))
         verifying_key = ecdsa.VerifyingKey.from_string(bytes.fromhex(self.header.sender_public_key), curve=ecdsa.SECP256k1, hashfunc=hashlib.sha256)
         verified = verify_signature(verifying_key, self.header.signature, tx_content_str)
 
@@ -220,7 +217,7 @@ class Transaction:
             out=indexed_out
         )
 
-        tx_content_str = json.dumps(content.__dict__, default=lambda x: getattr(x, "__dict__", str(x)))
+        tx_content_str = json.dumps(content, default=lambda x: getattr(x, "__dict__", str(x)))
         signature = sender.sign(tx_content_str)
 
         header = Transaction.Header(
@@ -231,12 +228,106 @@ class Transaction:
         )
 
         idless_tx_str = json.dumps({
-            "header": header.__dict__,
-            "content": content.__dict__
+            "header": header,
+            "content": content
         }, default=lambda x: getattr(x, "__dict__", str(x)))
 
         txid = hashlib.sha256(hashlib.sha256(json.dumps(idless_tx_str).encode()).digest()).hexdigest()
         return Transaction(txid, header, content)
+
+@dataclass
+class Block:
+    @dataclass
+    class Header:
+        merkle_root: str
+        previous_block_hash: str
+        timestamp: float
+        n_tx: int
+        difficulty: int
+        nonce: Optional[int] = None
+    
+    header: Header
+    transactions: List[Transaction]
+    header_hash: Optional[str] = None
+
+    def __str__(self) -> str:
+        return json.dumps({
+            "header_hash": self.header_hash,
+            "header": self.header,
+            "transactions": self.transactions
+        }, default=lambda x: getattr(x, "__dict__", str(x)), indent=2)
+
+    def validate_header_hash(self):
+        # Check that the header hash equals the hash of the blocks header with the nonce
+        assert self.is_mined(), "Block is not mined!"
+        
+        header_str = json.dumps(self.header.__dict__)
+        computed_header_hash = hashlib.sha256(hashlib.sha256(header_str.encode()).digest()).hexdigest()
+
+        return computed_header_hash == self.header_hash
+
+    def validate_transactions(self):
+        merkle_tree = MerkleTree()
+
+        # 1. Check that each transaction has a valid txid and a valid signature
+        for tx in self.transactions:
+            # print(transaction)
+            if not tx.validate_integrity():
+                return False
+            
+            merkle_tree.add_hash(tx.txid)
+        
+        # 2. Check that the merkle root equals the merkle root in the header of the block
+        return merkle_tree.compute_hash_root() == self.header.merkle_root
+
+    def validate_integrity(self):
+        # 1. Check the transactions are valid
+        transactions_valid = self.validate_transactions()
+
+        if not transactions_valid:
+            return False
+
+        # 2. Check the header hash is valid
+        header_hash_valid = self.validate_header_hash()
+        return header_hash_valid
+
+    def set_mined_information(self, header_hash: str, nonce: int) -> None:
+        self.header_hash = header_hash
+        self.header.nonce = nonce
+
+    def is_mined(self) -> bool:
+        return self.header_hash is not None and self.header.nonce is not None
+
+    def get_mineable_data(self, nonce: int) -> str:
+        return json.dumps({**self.header.__dict__, "nonce": nonce})
+
+    @staticmethod
+    def create_unmined_block(
+        miner: BlockchainIdentity,
+        previous_block_hash: str,
+        difficulty: int,
+        transactions: List[Transaction]
+    ):
+        # Add the coinbase transaction
+        coinbase_transaction = Transaction.create_new_transaction(miner, [], [Transaction.Content.TXOutput(miner.public_address, "money", 100)], "coinbase")
+        transactions = transactions[:] + [coinbase_transaction]
+
+        merkle_tree = MerkleTree()
+
+        for tx in transactions:
+            merkle_tree.add_hash(tx.txid)
+        
+        merkle_root = merkle_tree.compute_hash_root()
+        
+        header = Block.Header(
+            merkle_root=merkle_root,
+            previous_block_hash=previous_block_hash,
+            timestamp=datetime.datetime.now().timestamp(),
+            n_tx=len(transactions),
+            difficulty=difficulty
+        )
+
+        return Block(header, transactions)
 
 identities = {
     "farmer_1": BlockchainIdentity("Farmer 1", "1GTpnkyNdR8foqbdfgv8JkWxMgvDNRGxHV", "KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1"),
@@ -245,7 +336,7 @@ identities = {
     "retailer_1": BlockchainIdentity("Retailer 1", "1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq", "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8")
 }
 
-tx = Transaction.create_new_transaction(
+_tx = Transaction.create_new_transaction(
     sender=identities["farmer_1"],
     inp=[
         Transaction.Content.TXInput(
@@ -274,7 +365,40 @@ tx = Transaction.create_new_transaction(
     tx_type="??"
 )
 
-print(tx)
-print("Verified:", tx.validate())
+if __name__ == "__main__":
+    # print(tx)
+    # print("Validated integrity:", tx.validate_integrity())
 
-# Provide a list of transactions to the block, a miner, a previous hash, a nonce, and a hash
+    difficulty = 5
+    req = "0" * difficulty
+
+    block = Block.create_unmined_block(
+        miner=identities["retailer_1"],
+        previous_block_hash="0" * 64,
+        difficulty=difficulty,
+        transactions=[_tx]
+    )
+
+    import time
+
+    nonce = 0
+    chk_time = time.time()
+
+    while True:
+        md = block.get_mineable_data(nonce)
+        header_hash = hashlib.sha256(hashlib.sha256(md.encode()).digest()).hexdigest()
+
+        if header_hash.startswith(req):
+            block.set_mined_information(header_hash, nonce)
+            break
+
+        if nonce % 1000000 == 0 and nonce != 0:
+            delta = time.time() - chk_time
+            print("Time taken for 1000000 hashes", delta)
+            chk_time = time.time()
+
+        nonce += 1
+
+    print(block)
+    print("Is Mined:", block.is_mined())
+    print("Valid:", block.validate_integrity())
