@@ -6,6 +6,8 @@ import ecdsa
 import json
 import datetime
 import base58
+import threading
+import time
 
 assert "sha256" in hashlib.algorithms_available, "SHA256 is required for but it is unavailable on your system"
 assert "ripemd160" in hashlib.algorithms_available , "RIPEMD160 is required for but it is unavailable on your system"
@@ -298,8 +300,9 @@ class Block:
     def is_mined(self) -> bool:
         return self.header_hash is not None and self.header.nonce is not None
 
-    def get_mineable_data(self, nonce: int) -> str:
-        return json.dumps({**self.header.__dict__, "nonce": nonce})
+    def get_mallable_mining_str(self) -> str:
+        # ends with {..., "nonce": |
+        return json.dumps({**self.header.__dict__, "nonce": 1})[:-2]
 
     @staticmethod
     def create_unmined_block(
@@ -369,36 +372,52 @@ if __name__ == "__main__":
     # print(tx)
     # print("Validated integrity:", tx.validate_integrity())
 
-    difficulty = 5
+    difficulty = 6
     req = "0" * difficulty
 
-    block = Block.create_unmined_block(
+    _block = Block.create_unmined_block(
         miner=identities["retailer_1"],
         previous_block_hash="0" * 64,
         difficulty=difficulty,
         transactions=[_tx]
     )
 
-    import time
+    _block_2 = Block.create_unmined_block(
+        miner=identities["farmer_1"],
+        previous_block_hash="0" * 64,
+        difficulty=difficulty,
+        transactions=[_tx]
+    )
 
-    nonce = 0
-    chk_time = time.time()
+    import copy
 
-    while True:
-        md = block.get_mineable_data(nonce)
-        header_hash = hashlib.sha256(hashlib.sha256(md.encode()).digest()).hexdigest()
+    def faster_mine(block):
+        md = block.get_mallable_mining_str()
+        
+        nonce = 0
+        chk_time = time.time()
+        start_time = time.time()
 
-        if header_hash.startswith(req):
-            block.set_mined_information(header_hash, nonce)
-            break
+        while True:
+            c = md + str(nonce) + "}"
+            header_hash = hashlib.sha256(hashlib.sha256(c.encode()).digest()).hexdigest()
 
-        if nonce % 1000000 == 0 and nonce != 0:
-            delta = time.time() - chk_time
-            print("Time taken for 1000000 hashes", delta)
-            chk_time = time.time()
+            if header_hash.startswith(req):
+                block.set_mined_information(header_hash, nonce)
+                break
 
-        nonce += 1
+            if nonce % 1000000 == 0 and nonce != 0:
+                delta = time.time() - chk_time
+                print("Time taken for 1000000 hashes", delta)
+                chk_time = time.time()
 
-    print(block)
-    print("Is Mined:", block.is_mined())
-    print("Valid:", block.validate_integrity())
+            nonce += 1
+
+        print(block)
+        print("Mined in:", time.time() - start_time, "s")
+        print("Nonce:", block.header.nonce)
+        print("Valid:", block.validate_integrity())
+        print()
+
+    faster_mine(copy.deepcopy(_block))
+    faster_mine(copy.deepcopy(_block_2))
