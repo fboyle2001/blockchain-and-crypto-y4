@@ -1,22 +1,16 @@
-from typing import Dict, List, Any
-from dataclasses import dataclass
+from typing import Dict, List, Any, Optional
 
 import hashlib
 import ecdsa
 import json
 import datetime
 import base58
+import time
 
 assert "sha256" in hashlib.algorithms_available, "SHA256 is unavailable"
 assert "ripemd160" in hashlib.algorithms_available , "RIPEMD160 is unavailable"
 
 GLOBAL_INDENT = 2
-
-def pprint(a):
-    if type(a) in [int, str]:
-        print(a) 
-    
-    print(json.dumps(a, indent=2))
 
 def verify_signature(verifying_key: ecdsa.VerifyingKey, signature: str, message: str) -> bool:
     try:
@@ -82,7 +76,7 @@ class BlockchainIdentity:
         return verify_signature(self.verifying_key, signature, message)
 
 class Transaction:
-    transaction_types: List[str] = ["raw_material_creation", "material_conversion", "material_transfer", "financial_transfer"]
+    transaction_types: List[str] = ["raw_material_creation", "material_conversion", "material_transfer", "financial_transfer", "miner_reward"]
 
     def __init__(self, sender: BlockchainIdentity, tx_type: str):
         assert tx_type in Transaction.transaction_types, "Invalid transaction type"
@@ -92,8 +86,14 @@ class Transaction:
         self.out: List[Dict] = []
         self.tx_type = tx_type
 
+        self.signed = False
+        self.txid = None
+        self.signature = None
+        self.timestamp = None
+
     def add_input(self, txid: str, resource: str, quantity: int) -> None:
         self.inp.append({ 
+            "idx": len(self.inp),
             "txid": txid, 
             "resource": resource, 
             "quantity": quantity 
@@ -101,14 +101,18 @@ class Transaction:
 
     def add_output(self, receiver: str, resource: str, quantity: int) -> None:
         self.out.append({ 
+            "idx": len(self.out),
             "receiver": receiver, 
             "resource": resource, 
             "quantity": quantity 
         })
 
-    def sign(self):
+    def sign(self) -> None:
+        assert not self.signed, "Transaction already signed"
+        self.timestamp = datetime.datetime.now().timestamp()
+
         content = {
-            "timestamp": datetime.datetime.now().timestamp(),
+            "timestamp": self.timestamp,
             "tx_type": self.tx_type,
             "inp": self.inp,
             "out": self.out
@@ -132,26 +136,52 @@ class Transaction:
         unlabelled_transaction_str = json.dumps(unlabelled_transaction)
         txid = hashlib.sha256(hashlib.sha256(json.dumps(unlabelled_transaction_str).encode()).digest()).hexdigest()
 
-        return {
-            "txid": txid,
-            **unlabelled_transaction
+        self.signature = signature
+        self.txid = txid
+        self.signed = True
+
+    def to_dict(self) -> Dict[str, Any]:
+        content = {
+            "timestamp": self.timestamp,
+            "tx_type": self.tx_type,
+            "inp": self.inp,
+            "out": self.out
         }
+
+        header = {
+            "signature": self.signature,
+            "sender_public_key": self.sender.compressed_hex_public_key,
+            "hashed_sender_public_key": self.sender.public_address,
+            "version": 1,
+        }
+
+        return {
+            "txid": self.txid,
+            "header": header,
+            "content": content
+        }
+
+    def to_json(self, indent: Optional[int] =None) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+    def __str__(self) -> str:
+        return self.to_json(indent=2)
 
 class MerkleTree:
     def __init__(self):
-        self.hashes = []
+        self.hashes: List[str] = []
     
-    def __hash_data(self, data):
+    def __hash_data(self, data) -> str:
         return hashlib.sha256(hashlib.sha256(str(data).encode()).digest()).hexdigest()
 
-    def add_data(self, data):
+    def add_data(self, data: str) -> None:
         hashed =  self.__hash_data(data)
         self.hashes.append(hashed)
 
-    def add_hash(self, hashed):
+    def add_hash(self, hashed: str) -> None:
         self.hashes.append(hashed)
 
-    def compute_hash_root(self):
+    def compute_hash_root(self) -> str:
         working_hashes = self.hashes
 
         while len(working_hashes) != 1:
@@ -178,32 +208,120 @@ class MerkleTree:
         return working_hashes[0]
 
 class Block:
-    def __init__(self):
-        self.block_id = None
-        self.version = 1
-        self.timestamp = None
-        self.tx_count = None
-        self.prev_block_hash = None
+    def __init__(
+        self,
+        prospective_miner: BlockchainIdentity,
+        prev_hash: str,
+        transactions: List[Transaction],
+        difficulty: int
+    ):
+        self.prev_hash = prev_hash
+        self.timestamp = datetime.datetime.now().timestamp()
+        self.transactions = transactions
+        self.difficulty = difficulty
+
+        # Coinbase transaction
+        miner_reward = Transaction(prospective_miner, "miner_reward")
+        miner_reward.add_output(prospective_miner.public_address, "money", 100)
+        miner_reward.sign()
+
+        self.transactions.append(miner_reward)
+        self.n_tx = len(self.transactions)
+
+        self.merkle_root = self.__compute_merkle_root()
+
+        self.hash = None
         self.nonce = None
-        self.merkle_tree_root = None
-        self.blocks = []
 
-    def generate_header_hash(self, nonce):
-        header = self.get_header(nonce=nonce)
+        self.mined = False
 
-    def is_mined(self):
-        pass
+    def __compute_merkle_root(self) -> str:
+        tree = MerkleTree()
 
-    # Slide 35 Lecture 4
-    def get_header(self, nonce=None):
+        for transaction in self.transactions:
+            assert transaction.signed is not None and transaction.txid is not None, "Transaction is unsigned in the block!"
+            tree.add_hash(transaction.txid)
+        
+        return tree.compute_hash_root()
+
+    def try_nonce(self, nonce: int) -> bool:
+        start = "0" * self.difficulty
+        hashable = json.dumps({
+            "header": {
+                "nonce": nonce,
+                "merkle_root": self.merkle_root,
+                "prev_hash": self.prev_hash,
+                "timestamp": self.timestamp,
+                "n_tx": self.n_tx,
+                "difficulty": self.difficulty
+            },
+            "transactions": [tx.to_dict() for tx in self.transactions]
+        })
+
+        hashed = hashlib.sha256(hashlib.sha256(hashable.encode()).digest()).hexdigest()
+
+        if hashed.startswith(start):
+            self.nonce = nonce
+            self.hash = hashed
+            return True
+
+        return False
+
+    def to_dict(self) -> Dict[str, Any]:
         return {
-            "version": self.version,
-            "previous_block_hash": self.prev_block_hash,
-            "timestamp": self.timestamp,
-            "nonce": self.nonce if nonce is None else nonce,
-            "difficulty": None,
-            "merkle_tree_root": self.merkle_tree_root
+            "hash": self.hash,
+            "header": {
+                "nonce": self.nonce,
+                "merkle_root": self.merkle_root,
+                "prev_hash": self.prev_hash,
+                "timestamp": self.timestamp,
+                "n_tx": self.n_tx,
+                "difficulty": self.difficulty
+            },
+            "transactions": [tx.to_dict() for tx in self.transactions]
         }
+
+    def to_json(self, indent=None) -> str:
+        return json.dumps(self.to_dict(), indent=indent)
+
+    def __str__(self) -> str:
+        return self.to_json(indent=2)
+
+    @staticmethod
+    def verify_nonce(block_dict: Dict[str, Any]):
+        expected_hash = block_dict["hash"]
+        minimum_difficulty = block_dict["header"]["difficulty"]
+
+        hashable = {
+            "header": block_dict["header"],
+            "transactions": block_dict["transactions"]
+        }
+
+        hashed = hashlib.sha256(hashlib.sha256(json.dumps(hashable).encode()).digest()).hexdigest()
+        req = "0" * minimum_difficulty
+
+        return hashed == expected_hash and expected_hash.startswith(req)
+
+class Blockchain:
+    def __init__(self, difficulty):
+        self.blocks = []
+        self.difficulty = difficulty
+    
+    def init_genesis_block(self):
+        assert len(self.blocks) == 0
+        return
+
+    def get_latest_block(self):
+        return self.blocks[-1]
+    
+    def __len__(self):
+        return len(self.blocks)
+
+def mine(block):
+    nonce = 0
+
+    while not block.try_nonce(nonce):
+        nonce += 1
 
 identities = {
     "farmer_1": BlockchainIdentity("Farmer 1", "1GTpnkyNdR8foqbdfgv8JkWxMgvDNRGxHV", "KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1"),
@@ -212,6 +330,47 @@ identities = {
     "retailer_1": BlockchainIdentity("Retailer 1", "1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq", "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8")
 }
 
-transaction = Transaction(identities["farmer_1"], "raw_material_creation")
-transaction.add_output(identities["farmer_1"].public_address, "wheat", 500)
-signed = transaction.sign()
+["raw_material_creation", "material_conversion", "material_transfer", "financial_transfer", "miner_reward"]
+
+difficulty = 4
+miner = identities["farmer_1"]
+
+# BLOCK 1
+tx_1_1 = Transaction(identities["farmer_1"], "raw_material_creation")
+tx_1_1.add_output(identities["farmer_1"].public_address, "wheat", 500)
+tx_1_1.sign()
+
+block_1 = Block(miner, "genesis", [tx_1_1], difficulty)
+mine(block_1)
+print(block_1)
+assert block_1.hash is not None
+assert tx_1_1.txid is not None
+
+# BLOCK 2
+tx_2_1 = Transaction(identities["farmer_1"], "material_transfer")
+tx_2_1.add_input(tx_1_1.txid, "wheat", 500)
+tx_2_1.add_output(identities["manufacturer_1"].public_address, "wheat", 500)
+tx_2_1.sign()
+
+tx_2_2 = Transaction(identities["manufacturer_1"], "financial_transfer")
+tx_2_2.add_output(identities["farmer_1"].public_address, "money", 1000)
+tx_2_2.sign()
+
+block_2 = Block(miner, block_1.hash, [tx_2_1, tx_2_2], difficulty)
+mine(block_2)
+print(block_2)
+assert block_2.hash is not None
+assert tx_2_1.txid is not None
+assert tx_2_2.txid is not None
+
+# BLOCK 3
+tx_3_1 = Transaction(identities["manufacturer_1"], "material_conversion")
+tx_3_1.add_input(tx_2_1.txid, "wheat", 500)
+tx_3_1.add_input(tx_2_1.txid, "wheat", 1000)
+tx_3_1.add_output(identities["manufacturer_1"].public_address, "bread", 250)
+tx_3_1.sign()
+
+block_3 = Block(miner, block_2.hash, [tx_3_1], difficulty)
+mine(block_3)
+print(block_3)
+
