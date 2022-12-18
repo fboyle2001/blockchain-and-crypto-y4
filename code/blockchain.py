@@ -582,36 +582,58 @@ class Blockchain:
         return json.dumps(self.blocks, indent=2, default=lambda x: getattr(x, "__dict__", str(x)))
 
     def trace_tx_output_backwards(self, txid: str, idx: int, start_block: Optional[int] = None):
-        trace = None
         start_block = start_block if start_block is not None else len(self.blocks)
+        details = {}
 
         # Traverse backwards
         for i, block in enumerate(self.blocks[:start_block][::-1]):
             real_block_idx = start_block - i
 
             for tx in block.transactions:
+                # Found the transaction we were searching for
                 if tx.txid == txid:
+                    details["block_hash"] = block.header_hash
+                    details["block_timestamp"] = block.header.timestamp
+                    details["txid"] = tx.txid
+                    details["type"] = tx.content.tx_type
+                    details["tx_timestamp"] = tx.content.timestamp
+                    details["relevant_output"] = list(filter(lambda x: x.idx == idx, tx.content.out))[0]
+
+                    # Record the block that the transaction is in
+                    # details["block"] = {
+                    #     "header_hash": block.header_hash,
+                    #     "header": block.header
+                    # }
+
+                    # # Record the transaction details
+                    # details["tx"] = {
+                    #     "txid": tx.txid,
+                    #     "header": tx.header,
+                    #     "relevant_output": 
+                    # }
+
+                    traceback = None
+                    
+                    # If there are no inputs then this was an initial transaction
                     if len(tx.content.inp) == 0:
-                        trace = "raw_material_creation"
-                        break
+                        traceback = tx.content.tx_type
+                    else:
+                        traceback = []
 
-                    traces = []
-
-                    for in_txo in tx.content.inp:
-                        trace = self.trace_tx_output_backwards(in_txo.txid, in_txo.txid_idx, real_block_idx - 1)
-                        traces.append({
-                            "tx": in_txo,
-                            "trace": trace
-                        })
+                        # Otherwise trace back the inputs to this transaction
+                        for in_txo in tx.content.inp:
+                            # Recursively continue the search
+                            trace = self.trace_tx_output_backwards(in_txo.txid, in_txo.txid_idx, real_block_idx - 1)
+                            traceback.append(trace)
                     
-                    trace = traces
-                    
+                    details["traceback"] = traceback
                     break
-                
-            if trace is not None:
+            
+            # If we have found the transaction then stop the search
+            if len(details.keys()) > 0:
                 break
         
-        return trace            
+        return details            
 
 def non_multi_threaded_block_miner(block: Block, verbose: bool = False):
     mallable = block.get_mallable_mining_str()
@@ -910,6 +932,133 @@ def get_wallets(blockchain: Blockchain, identities: Dict[str, BlockchainIdentity
     
     return wallets
 
+def visualise_tx(txid, idx, address, resource, quantity, timestamp, tx_type, lookup):
+    shortened_txid = f"{txid[:4]}...{txid[-4:]}[{idx}]"
+    shortened_address = f"{address[:4]}...{address[-4:]}"
+
+    lines = [
+        "",
+        f"{shortened_txid}",
+        "",
+        f"ts: {timestamp}",
+        f"type: {tx_type}",
+        f"address: {shortened_address}",
+        f"owner: {lookup[address]}",
+        f"resource: {resource}",
+        f"quantity: {quantity}",
+        ""
+    ]
+
+    max_len = max(max([len(x) for x in lines]) + 2, 29)
+    out = ""
+    sep = "-" * (max_len + 2) + "\n"
+
+    for line in lines:
+        if line == "":
+            out += sep
+            continue
+
+        padded = f" {line} "
+
+        while len(padded) != max_len:
+            padded = f"{padded} "
+
+        out += f"|{padded}|\n"
+
+    return out
+
+def _rec_vis(traceback, lookup):
+    if type(traceback) == str:
+        return None
+    
+    into_self = []
+    self_block = visualise_tx(
+        traceback["txid"], 
+        traceback["relevant_output"]["idx"], 
+        traceback["relevant_output"]["receiver"], 
+        traceback["relevant_output"]["resource"], 
+        traceback["relevant_output"]["quantity"], 
+        traceback["tx_timestamp"], 
+        traceback["type"], 
+        lookup
+    )
+
+    for deeper_traceback in traceback["traceback"]:
+        res = rec_vis(deeper_traceback, lookup)
+
+        if res == None:
+            continue
+
+        into_self.append(res)
+
+    if len(into_self) == 0:
+        return self_block
+
+    out = []
+
+    for i, block in enumerate(into_self):
+        if i == 0:
+            self_split = self_block.split("\n")
+
+            for j, line in enumerate(block.split("\n")):
+                if j < len(self_split):
+                    if j == 5:
+                        rejigged_line = line + " ----> " + self_split[j] 
+                    else:
+                        rejigged_line = line + " " * 7 + self_split[j] 
+
+                    out.append(rejigged_line)
+                else:
+                    out.append(line)
+                
+                if j != len(block.split("\n")) - 1:
+                    out.append("\n")
+        else:
+            for j, line in enumerate(block.split("\n")):
+                if j == 0:
+                    pos = len(line) + 3
+                    new_out = []
+                    go = False
+
+                    for q in out:
+                        pad = q
+
+                        if pad != "\n":
+                            if len(pad) < pos:
+                                while len(pad) < pos:
+                                    pad += " "
+                                
+                                pad += "|"
+                            else:
+                                if not go:
+                                    go = pad[pos] == "-"
+                                else:
+                                    pad = pad[:pos] + "|" + pad[pos + 1:]
+
+                        new_out.append(pad)
+
+                    out = new_out
+
+                out += line
+
+                if j == 5:
+                    out.append(" ---")
+                
+                if j < 5:
+                    out.append("   |")
+
+                if j != len(block.split("\n")) - 1:
+                    out.append("\n")
+        
+        if i != len(into_self) - 1:
+            out.append("\n")
+    
+    return "".join(out)
+
+def rec_vis(traceback, lookup):
+    blocks = _rec_vis(traceback, lookup)
+    return blocks
+
 if __name__ == "__main__":
     miner_identities = {
         "miner_1": BlockchainIdentity("1J5txDKRWLtHCc4ppFKYLEkWicAy5PtZ6S", "Kwc4dJTvEeFMMg3fHwuE1ZujDPckztiFGKespwoPKN3qx2wm8wFT"),
@@ -938,7 +1087,9 @@ if __name__ == "__main__":
         "retailer_5": BlockchainIdentity("1LW2uNLuRjRW14qg855NHNHudnnu4aPk4Z", "L471B8sYTpvroueVyCCT5dKBZgLxyEUsEnbNHf1LmShSak3kcog2")
     }
 
-    blockchain = Blockchain(difficulty=4)
+    lookup = {iden.public_address: key for key, iden in participant_identities.items()}
+
+    blockchain = Blockchain(difficulty=1)
     # competing_miners = 1
     # assert 1 <= competing_miners <= len(miner_identities), "Invalid number of miners"
     # selected_miners = list(miner_identities.values())[:competing_miners]
@@ -948,11 +1099,20 @@ if __name__ == "__main__":
     part_3_b(blockchain, miner, participant_identities)
 
     # print(json.dumps(get_wallets(blockchain, participant_identities | miner_identities), indent=2))
-    txid = blockchain.get_last_block().transactions[0].txid
+    txid = blockchain.get_last_block().transactions[1].txid
     idx = 0
 
     print("Tracing", txid, idx)
-    print(blockchain.get_last_block().transactions[0])
-    print()
-    h = blockchain.trace_tx_output_backwards(txid, idx)
+    # print(blockchain.get_last_block().transactions[0])
+    # print()
+    h = json.loads(json.dumps(blockchain.trace_tx_output_backwards(txid, idx), default=lambda x: getattr(x, "__dict__", str)))
     print(json.dumps(h, indent=2, default=lambda x: getattr(x, "__dict__", str)))
+
+    traceback = h
+
+    
+
+    # print(visualise_tx(h["txid"], h["relevant_output"]["idx"], h["relevant_output"]["receiver"], h["relevant_output"]["resource"], h["relevant_output"]["quantity"], lookup))
+
+    v = rec_vis(h, lookup)
+    print(v)
