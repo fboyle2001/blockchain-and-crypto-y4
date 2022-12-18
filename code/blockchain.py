@@ -352,7 +352,7 @@ class Blockchain:
     def create_unmined_block(self, miner: BlockchainIdentity, transactions: List[Transaction]):
         previous_block_hash = "0" * 64
 
-        # Check it links to the previous block
+        # Link it to the previous blocks
         if len(self) > 0:
             previous_block_hash = self.get_last_block().header_hash
             assert previous_block_hash is not None
@@ -379,14 +379,14 @@ class Blockchain:
         # 4. Check the transactions are legitmate
 
         if not block.is_mined():
-            return False
+            assert False
         
         if len(self) > 0 and block.header.previous_block_hash != self.get_last_block().header_hash:
-            return False
+            assert False
 
         # Check the cryptographic integrity of the block and its transactions
         if not block.validate_integrity():
-            return False
+            assert False
 
         # Check the validity of the spending, i.e. no double spends and only UTXOs used
         outputs = {}
@@ -394,55 +394,55 @@ class Blockchain:
 
         for tx in block.transactions:
             if len(tx.content.inp) == 0 and len(tx.content.out) == 0:
-                return False
+                assert False
 
             if tx.content.tx_type == "raw_material_creation":
                 # No way to check legitimacy 
                 if len(tx.content.inp) != 0:
-                    return False
+                    assert False
 
                 if len(tx.content.out) != 1:
-                    return False
+                    assert False
                 
                 if tx.content.out[0].quantity <= 0:
-                    return False
+                    assert False
 
             elif tx.content.tx_type == "financial_transfer":
                 # No way to check legitimacy so can't enforce that money exists on the chain
                 if len(tx.content.inp) != 0:
-                    return False
+                    assert False
 
-                # Can send some back to self
                 if len(tx.content.out) < 1:
-                    return False
+                    assert False
                 
-                if tx.content.inp[0].quantity <= 0:
-                    return False
+                for out in tx.content.out:
+                    if out.quantity <= 0:
+                        assert False
 
-                if tx.content.inp[0].resource != "money":
-                    return False
+                    if out.resource != "money":
+                        assert False
 
             elif tx.content.tx_type == "coinbase":
                 # No way to check legitimacy 
                 if len(tx.content.inp) != 0:
-                    return False
+                    assert False
                 
                 # No way to check legitimacy 
                 if len(tx.content.out) != 1:
-                    return False
+                    assert False
 
                 if tx.header.hashed_sender_public_key != tx.content.out[0].receiver:
-                    return False
+                    assert False
 
                 if tx.content.out[0].quantity != self.coinbase_reward:
-                    return False
+                    assert False
 
             elif tx.content.tx_type == "material_conversion":
                 if len(tx.content.inp) < 1:
-                    return False
+                    assert False
 
                 if len(tx.content.out) < 1:
-                    return False
+                    assert False
 
                 # Check that the inputs are UTXO transactions
                 in_total = 0
@@ -454,18 +454,18 @@ class Blockchain:
 
                     # Prevent double spend
                     if txid_with_idx in spent_txids_with_idx:
-                        return False
+                        assert False
                     
                     # Can only spend UTXOs
                     if inp.txid not in self.utxos:
-                        return False
+                        assert False
 
                     if inp.txid_idx not in self.utxos[inp.txid]:
-                        return False
+                        assert False
 
                     # Can't spend someone elses UTXOs!
                     if self.utxos[inp.txid][inp.txid_idx].receiver != tx.header.hashed_sender_public_key:
-                        return False
+                        assert False
                     
                     spent_txids_with_idx.append(txid_with_idx)
 
@@ -476,19 +476,19 @@ class Blockchain:
 
                 for out in tx.content.out:
                     if out.receiver != tx.header.hashed_sender_public_key:
-                        return False
+                        assert False
                     
                     out_total += out.quantity
 
                 if out_total > in_total:
-                    return False
+                    assert False
 
             elif tx.content.tx_type == "material_transfer":
                 if len(tx.content.inp) < 1:
-                    return False
+                    assert False
 
                 if len(tx.content.out) < 1:
-                    return False
+                    assert False
 
                 # Total IN = Total OUT
                 out_totals = {}
@@ -506,26 +506,26 @@ class Blockchain:
 
                     # Prevent double spend
                     if txid_with_idx in spent_txids_with_idx:
-                        return False
+                        assert False
                     
                     # Can only spend UTXOs
                     if inp.txid not in self.utxos:
-                        return False
+                        assert False
 
                     if inp.txid_idx not in self.utxos[inp.txid]:
-                        return False
+                        assert False
 
                     expected_utxo = self.utxos[inp.txid][inp.txid_idx]
 
                     if inp.resource != expected_utxo.resource:
-                        return False
+                        assert False
 
                     if inp.quantity != expected_utxo.quantity:
-                        return False
+                        assert False
 
                     # Can't spend someone elses UTXOs!
                     if expected_utxo.receiver != tx.header.hashed_sender_public_key:
-                        return False
+                        assert False
 
                     spent_txids_with_idx.append(txid_with_idx)
 
@@ -535,14 +535,14 @@ class Blockchain:
                     in_totals[inp.resource] += inp.quantity
 
                 if out_totals.keys() != in_totals.keys():
-                    return False
+                    assert False
                 
                 for resource in out_totals.keys():
                     if out_totals[resource] != in_totals[resource]:
-                        return False
+                        assert False
                     
             else:
-                return False
+                assert False
 
             indexed = {}
 
@@ -611,92 +611,309 @@ def non_multi_threaded_block_miner(block: Block, verbose: bool = False):
 def part_3_a(blockchain: Blockchain, miner: BlockchainIdentity):
     genesis = blockchain.create_unmined_block(miner, [])
     non_multi_threaded_block_miner(genesis, verbose=True)
-    blockchain.append_mined_block(genesis)
+    genesis_appended = blockchain.append_mined_block(genesis)
+    print("Mined block 0 (genesis) appended:", genesis_appended)
+
+def part_3_b(blockchain: Blockchain, miner: BlockchainIdentity, participant_identities: Dict[str, BlockchainIdentity]):
+    farmer_gen_block = blockchain.create_unmined_block(miner, [
+        Transaction.create_new_transaction(
+            participant_identities["farmer_1"], [], [Transaction.Content.TXOutput(participant_identities["farmer_1"].public_address, "wheat", 350)], "raw_material_creation"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["farmer_2"], [], [Transaction.Content.TXOutput(participant_identities["farmer_2"].public_address, "wheat", 500)], "raw_material_creation"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["farmer_3"], [], [Transaction.Content.TXOutput(participant_identities["farmer_3"].public_address, "wheat", 250)], "raw_material_creation"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["farmer_4"], [], [Transaction.Content.TXOutput(participant_identities["farmer_4"].public_address, "wheat", 300)], "raw_material_creation"
+        )
+    ])
+
+    non_multi_threaded_block_miner(farmer_gen_block, verbose=True)
+    appended = blockchain.append_mined_block(farmer_gen_block)
+    print("Mined block 1, appended:", appended)
+
+    f1_tx = blockchain.get_last_block().transactions[0]
+    f2_tx = blockchain.get_last_block().transactions[1]
+    f3_tx = blockchain.get_last_block().transactions[2]
+    f4_tx = blockchain.get_last_block().transactions[3]
+
+    farmer_manu_transfer_block = blockchain.create_unmined_block(miner, [
+        Transaction.create_new_transaction(
+            participant_identities["farmer_1"], [
+                Transaction.Content.TXInput(f1_tx.txid, 0, "wheat", 350)
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "wheat", 250),
+                Transaction.Content.TXOutput(participant_identities["farmer_1"].public_address, "wheat", 100)
+            ], "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["farmer_2"], [
+                Transaction.Content.TXInput(f2_tx.txid, 0, "wheat", 500)
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "wheat", 300),
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "wheat", 150),
+                Transaction.Content.TXOutput(participant_identities["farmer_2"].public_address, "wheat", 50)
+            ], "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["farmer_3"], [
+                Transaction.Content.TXInput(f3_tx.txid, 0, "wheat", 250)
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "wheat", 125),
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "wheat", 125)
+            ], "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["farmer_4"], [
+                Transaction.Content.TXInput(f4_tx.txid, 0, "wheat", 300)
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "wheat", 270),
+                Transaction.Content.TXOutput(participant_identities["farmer_4"].public_address, "wheat", 30)
+            ], "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_1"], [], [
+                Transaction.Content.TXOutput(participant_identities["farmer_1"].public_address, "money", 250),
+                Transaction.Content.TXOutput(participant_identities["farmer_2"].public_address, "money", 300),
+                Transaction.Content.TXOutput(participant_identities["farmer_3"].public_address, "money", 125)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_2"], [], [
+                Transaction.Content.TXOutput(participant_identities["farmer_2"].public_address, "money", 150),
+                Transaction.Content.TXOutput(participant_identities["farmer_3"].public_address, "money", 125),
+                Transaction.Content.TXOutput(participant_identities["farmer_4"].public_address, "money", 270)
+            ],
+            "financial_transfer"
+        ),
+    ])
+
+    non_multi_threaded_block_miner(farmer_manu_transfer_block, verbose=True)
+    appended = blockchain.append_mined_block(farmer_manu_transfer_block)
+    print("Mined block 2, appended:", appended)
+
+    lt = blockchain.get_last_block().transactions
+    man_1_wheat = [(lt[0].txid, 0), (lt[1].txid, 0), (lt[2].txid, 0)]
+    man_2_wheat = [(lt[1].txid, 1), (lt[2].txid, 1), (lt[3].txid, 0)]
+
+    manu_mat_conv_block = blockchain.create_unmined_block(miner, [
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_1"], [
+                Transaction.Content.TXInput(man_1_wheat[0][0], man_1_wheat[0][1], "wheat", 250),
+                Transaction.Content.TXInput(man_1_wheat[1][0], man_1_wheat[1][1], "wheat", 300)
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "bread", 55)
+            ],
+            "material_conversion"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_1"], [
+                Transaction.Content.TXInput(man_1_wheat[2][0], man_1_wheat[2][1], "wheat", 125),
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "bread", 12),
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "wheat", 5)
+            ],
+            "material_conversion"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_2"], [
+                Transaction.Content.TXInput(man_2_wheat[0][0], man_2_wheat[0][1], "wheat", 150),
+                Transaction.Content.TXInput(man_2_wheat[1][0], man_2_wheat[1][1], "wheat", 125)
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "bread", 37),
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "wheat", 5)
+            ],
+            "material_conversion"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_2"], [
+                Transaction.Content.TXInput(man_2_wheat[2][0], man_2_wheat[2][1], "wheat", 270),
+            ], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "bread", 27),
+            ],
+            "material_conversion"
+        ),
+    ])
+
+    non_multi_threaded_block_miner(manu_mat_conv_block, verbose=True)
+    appended = blockchain.append_mined_block(manu_mat_conv_block)
+    print("Mined block 3, appended:", appended)
+
+    lt = blockchain.get_last_block().transactions
+    man_1_bread = [(lt[0].txid, 0), (lt[1].txid, 0)]
+    man_2_bread = [(lt[2].txid, 0), (lt[3].txid, 0)]
+
+    manu_wholesaler_transfer_block = blockchain.create_unmined_block(miner, [
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_1"], [ 
+                Transaction.Content.TXInput(man_1_bread[0][0], man_1_bread[0][1], "bread", 55),
+                Transaction.Content.TXInput(man_1_bread[1][0], man_1_bread[1][1], "bread", 12)
+            ],
+            [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_1"].public_address, "bread", 40),
+                Transaction.Content.TXOutput(participant_identities["wholesaler_2"].public_address, "bread", 27),
+            ],
+            "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["manufacturer_2"], [ 
+                Transaction.Content.TXInput(man_2_bread[0][0], man_2_bread[0][1], "bread", 37),
+                Transaction.Content.TXInput(man_2_bread[1][0], man_2_bread[1][1], "bread", 27)
+            ],
+            [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_2"].public_address, "bread", 32),
+                Transaction.Content.TXOutput(participant_identities["wholesaler_3"].public_address, "bread", 32)
+            ],
+            "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["wholesaler_1"], [], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "money", 5000)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["wholesaler_2"], [], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_1"].public_address, "money", 3375),
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "money", 4000)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["wholesaler_3"], [], [
+                Transaction.Content.TXOutput(participant_identities["manufacturer_2"].public_address, "money", 4000)
+            ],
+            "financial_transfer"
+        )
+    ])
+
+    non_multi_threaded_block_miner(manu_wholesaler_transfer_block, verbose=True)
+    appended = blockchain.append_mined_block(manu_wholesaler_transfer_block)
+    print("Mined block 4, appended:", appended)
+
+    lt = blockchain.get_last_block().transactions
+    ws_1_bread = [(lt[0].txid, 0)]
+    ws_2_bread = [(lt[0].txid, 1), (lt[1].txid, 0)]
+    ws_3_bread = [(lt[1].txid, 1)]
+
+    wholesaler_retailer_transfer_block = blockchain.create_unmined_block(miner, [
+        Transaction.create_new_transaction(
+            participant_identities["wholesaler_1"], [ 
+                Transaction.Content.TXInput(ws_1_bread[0][0], ws_1_bread[0][1], "bread", 40),
+            ],
+            [
+                Transaction.Content.TXOutput(participant_identities["retailer_1"].public_address, "bread", 25),
+                Transaction.Content.TXOutput(participant_identities["retailer_2"].public_address, "bread", 15),
+            ],
+            "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["wholesaler_2"], [ 
+                Transaction.Content.TXInput(ws_2_bread[0][0], ws_2_bread[0][1], "bread", 27),
+                Transaction.Content.TXInput(ws_2_bread[1][0], ws_2_bread[1][1], "bread", 32)
+            ],
+            [
+                Transaction.Content.TXOutput(participant_identities["retailer_2"].public_address, "bread", 15),
+                Transaction.Content.TXOutput(participant_identities["retailer_3"].public_address, "bread", 30),
+                Transaction.Content.TXOutput(participant_identities["retailer_4"].public_address, "bread", 14),
+            ],
+            "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["wholesaler_3"], [ 
+                Transaction.Content.TXInput(ws_3_bread[0][0], ws_3_bread[0][1], "bread", 32),
+            ],
+            [
+                Transaction.Content.TXOutput(participant_identities["retailer_4"].public_address, "bread", 16),
+                Transaction.Content.TXOutput(participant_identities["retailer_5"].public_address, "bread", 16),
+            ],
+            "material_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["retailer_1"], [], [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_1"].public_address, "money", 4375)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["retailer_2"], [], [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_1"].public_address, "money", 2625),
+                Transaction.Content.TXOutput(participant_identities["wholesaler_2"].public_address, "money", 2625)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["retailer_3"], [], [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_2"].public_address, "money", 5250)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["retailer_4"], [], [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_2"].public_address, "money", 2450),
+                Transaction.Content.TXOutput(participant_identities["wholesaler_3"].public_address, "money", 2800)
+            ],
+            "financial_transfer"
+        ),
+        Transaction.create_new_transaction(
+            participant_identities["retailer_5"], [], [
+                Transaction.Content.TXOutput(participant_identities["wholesaler_3"].public_address, "money", 2800)
+            ],
+            "financial_transfer"
+        )
+    ])
+
+    non_multi_threaded_block_miner(wholesaler_retailer_transfer_block, verbose=True)
+    appended = blockchain.append_mined_block(wholesaler_retailer_transfer_block)
+    print("Mined block 5, appended:", appended)
+
+def get_wallets(blockchain: Blockchain, identities: Dict[str, BlockchainIdentity]) -> Dict[str, Dict[str, int]]:
+    wallets: Dict[str, Dict[str, int]] = {}
+
+    for name, identity in identities.items():
+        wallets[name] = blockchain.get_wallet(identity)
+    
+    return wallets
 
 if __name__ == "__main__":
     miner_identities = {
         "miner_1": BlockchainIdentity("1J5txDKRWLtHCc4ppFKYLEkWicAy5PtZ6S", "Kwc4dJTvEeFMMg3fHwuE1ZujDPckztiFGKespwoPKN3qx2wm8wFT"),
-        "miner_2": BlockchainIdentity("1CePNpiphrENh1jPyhWrBPFh8wihUbodLc", "L1Q23cZnwTDbcPUL9pBb9PiUsbGTwFsxMnzqKamCnyXrwKULdriR"),
-        "miner_3": BlockchainIdentity("18i6ajSi9TvN8RMN1bKP3UFAciAeiZzcov", "L5nyTvjeS8niFU8W6MRXVbJyb9d4Gqgcnq9QfNM7xZDf3by1EneM"),
-        "miner_4": BlockchainIdentity("14WZS1BX5t9YxTc7dyPWmYAM71m8jKt7eK", "L2r2b3cmdem9gUzw73oFqnQ7ppoVb4cCGUE9DMsXcNbAEZjWbDpa")
+        #"miner_2": BlockchainIdentity("1CePNpiphrENh1jPyhWrBPFh8wihUbodLc", "L1Q23cZnwTDbcPUL9pBb9PiUsbGTwFsxMnzqKamCnyXrwKULdriR"),
+        #"miner_3": BlockchainIdentity("18i6ajSi9TvN8RMN1bKP3UFAciAeiZzcov", "L5nyTvjeS8niFU8W6MRXVbJyb9d4Gqgcnq9QfNM7xZDf3by1EneM"),
+        #"miner_4": BlockchainIdentity("14WZS1BX5t9YxTc7dyPWmYAM71m8jKt7eK", "L2r2b3cmdem9gUzw73oFqnQ7ppoVb4cCGUE9DMsXcNbAEZjWbDpa")
     }
 
     participant_identities = {
         "farmer_1": BlockchainIdentity("1GTpnkyNdR8foqbdfgv8JkWxMgvDNRGxHV", "KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1"),
+        "farmer_2": BlockchainIdentity("1Gq7q7CjhFLLJVsFKV72rbNJQNZ3TCtXd2", "L1ABw5f7tbAmxaL2vzKF8qMwPFEJszkLYJzLyxekccJjJrmQ4La9"),
+        "farmer_3": BlockchainIdentity("19mGEKM611fHFnztN8BmVRRjyhSAfGf4aP", "L4Mv6qu6kguwpf8WyMpoifgqYt6BsDiD1esYQqfVLszfaSeYSJt9"),
+        "farmer_4": BlockchainIdentity("1K81wn79X6r495N2PcEMDdujAcxKF5JVYT", "L1K5kYNinu19PQhh2bGm31nJs6ahz5HCsD4HSiMzxTiRyG7LrEDD"),
+
         "manufacturer_1": BlockchainIdentity("1G6zJsQy7WxpySxjovkidSb8aaZsMaTqaC", "KyMgXMMeMPvDtbpEcC4qxZ4e9NMFcCCYB1HwUkj3mXZJXzYuoLBE"),
+        "manufacturer_2": BlockchainIdentity("13jHFqxxn3MnXAR1Drv5DgG24ZvQwbXtxt", "KxPGZWDRJhFg676SRfKAA2EzqiLXUDrzRz3F8HYzMzn62sAv8k4X"),
+
         "wholesaler_1": BlockchainIdentity("1MRHcvxBaqiiAVYCGG8F2Dom4xoRnutLGZ", "KzGwaUyL3wTm7DrhVSNBLZgYczAH8R5kX6yicycN4B6zcaGbQLKK"),
-        "retailer_1": BlockchainIdentity("1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq", "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8")
+        "wholesaler_2": BlockchainIdentity("1LBQ8jjfnpAJ6tck9pcMf2QMbEhL5nqVqR", "KycvKsfWXbAkY3GGjxYyFPakEu3V7FFa3NFWnHg7xF9SwVLzbxyK"),
+        "wholesaler_3": BlockchainIdentity("1682GahbBriPZdGQ4DYgU29TV3Ff6zvTgr", "L5mkSj2rKhpnbEGKAxLfzRRaML7vXqpj87s6A6XeZnksGJhyiVAW"),
+
+        "retailer_1": BlockchainIdentity("1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq", "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8"),
+        "retailer_2": BlockchainIdentity("1LAMSiaEdox8ZcPtWdN5dN6CELKf116tkR", "L5YPZCEVrJdEwDqR1NUG6F8HKg6r5nSGMCNGiSvywYZcKgT6We2c"),
+        "retailer_3": BlockchainIdentity("14g8cTU97W9gWkRzKS3gYuuMja11mKJDQY", "Kzttkaav8BUMo8Evim6GTUvyZZuQeWstX2LodLeqm3GjPbdhvNNK"),
+        "retailer_4": BlockchainIdentity("1B4daVXZPWW8NMzag6F4uS2L8hcSKivy4A", "KyDccbXQAgtmKuueAW8KMpXsH5K3bsmxrZYgMCQUpQRRCjtWS5Va"),
+        "retailer_5": BlockchainIdentity("1LW2uNLuRjRW14qg855NHNHudnnu4aPk4Z", "L471B8sYTpvroueVyCCT5dKBZgLxyEUsEnbNHf1LmShSak3kcog2")
     }
 
     blockchain = Blockchain(difficulty=4)
-    competing_miners = 1
-    assert 1 <= competing_miners <= len(miner_identities), "Invalid number of miners"
-    selected_miners = list(miner_identities.values())[:competing_miners]
+    # competing_miners = 1
+    # assert 1 <= competing_miners <= len(miner_identities), "Invalid number of miners"
+    # selected_miners = list(miner_identities.values())[:competing_miners]
     miner = miner_identities["miner_1"]
 
     part_3_a(blockchain, miner)
-    # print(blockchain)
-    print(blockchain.utxos)
+    part_3_b(blockchain, miner, participant_identities)
 
-    farmer_resource_block = blockchain.create_unmined_block(miner, [
-        Transaction.create_new_transaction(
-            participant_identities["farmer_1"],
-            [],
-            [
-                Transaction.Content.TXOutput(
-                    participant_identities["farmer_1"].public_address,
-                    "wheat",
-                    500
-                )
-            ],
-            "raw_material_creation"
-        )
-    ])
-    non_multi_threaded_block_miner(farmer_resource_block, verbose=True)
-    blockchain.append_mined_block(farmer_resource_block)
-    # print(blockchain)
-    print(blockchain.utxos)
-
-    farmer_transfer = blockchain.create_unmined_block(miner, [
-        Transaction.create_new_transaction(
-            participant_identities["farmer_1"],
-            [],
-            [
-                Transaction.Content.TXOutput(
-                    participant_identities["farmer_1"].public_address,
-                    "wheat",
-                    350
-                )
-            ],
-            "raw_material_creation"
-        ),
-        Transaction.create_new_transaction(
-            participant_identities["farmer_1"],
-            [
-                Transaction.Content.TXInput(
-                    blockchain.get_last_block().transactions[0].txid,
-                    0,
-                    "wheat",
-                    500
-                )
-            ],
-            [
-                Transaction.Content.TXOutput(
-                    participant_identities["farmer_1"].public_address,
-                    "wheat",
-                    100
-                ),
-                Transaction.Content.TXOutput(
-                    participant_identities["manufacturer_1"].public_address,
-                    "wheat",
-                    400
-                )
-            ],
-            "material_transfer"
-        )
-    ])
-
-    for participant, identity in (participant_identities | miner_identities).items():
-        print(participant)
-        print(json.dumps(blockchain.get_wallet(identity), indent=2))
-        print()
+    # print(json.dumps(get_wallets(blockchain, participant_identities | miner_identities), indent=2))
+    print(blockchain)
