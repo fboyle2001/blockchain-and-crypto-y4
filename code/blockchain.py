@@ -581,6 +581,38 @@ class Blockchain:
     def __str__(self):
         return json.dumps(self.blocks, indent=2, default=lambda x: getattr(x, "__dict__", str(x)))
 
+    def trace_tx_output_backwards(self, txid: str, idx: int, start_block: Optional[int] = None):
+        trace = None
+        start_block = start_block if start_block is not None else len(self.blocks)
+
+        # Traverse backwards
+        for i, block in enumerate(self.blocks[:start_block][::-1]):
+            real_block_idx = start_block - i
+
+            for tx in block.transactions:
+                if tx.txid == txid:
+                    if len(tx.content.inp) == 0:
+                        trace = "raw_material_creation"
+                        break
+
+                    traces = []
+
+                    for in_txo in tx.content.inp:
+                        trace = self.trace_tx_output_backwards(in_txo.txid, in_txo.txid_idx, real_block_idx - 1)
+                        traces.append({
+                            "tx": in_txo,
+                            "trace": trace
+                        })
+                    
+                    trace = traces
+                    
+                    break
+                
+            if trace is not None:
+                break
+        
+        return trace            
+
 def non_multi_threaded_block_miner(block: Block, verbose: bool = False):
     mallable = block.get_mallable_mining_str()
     req = "0" * block.header.difficulty
@@ -916,4 +948,11 @@ if __name__ == "__main__":
     part_3_b(blockchain, miner, participant_identities)
 
     # print(json.dumps(get_wallets(blockchain, participant_identities | miner_identities), indent=2))
-    print(blockchain)
+    txid = blockchain.get_last_block().transactions[0].txid
+    idx = 0
+
+    print("Tracing", txid, idx)
+    print(blockchain.get_last_block().transactions[0])
+    print()
+    h = blockchain.trace_tx_output_backwards(txid, idx)
+    print(json.dumps(h, indent=2, default=lambda x: getattr(x, "__dict__", str)))
