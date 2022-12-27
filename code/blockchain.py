@@ -584,7 +584,7 @@ class Blockchain:
     def __str__(self):
         return json.dumps(self.blocks, indent=2, default=lambda x: getattr(x, "__dict__", str(x)))
 
-    def trace_tx_output_backwards(self, txid: str, idx: int, start_block: Optional[int] = None):
+    def trace_transaction(self, txid: str, idx: int, start_block: Optional[int] = None):
         start_block = start_block if start_block is not None else len(self.blocks)
         details = {}
 
@@ -613,7 +613,7 @@ class Blockchain:
                         # Otherwise trace back the inputs to this transaction
                         for in_txo in tx.content.inp:
                             # Recursively continue the search
-                            trace = self.trace_tx_output_backwards(in_txo.txid, in_txo.txid_idx, real_block_idx - 1)
+                            trace = self.trace_transaction(in_txo.txid, in_txo.txid_idx, real_block_idx - 1)
                             traceback.append(trace)
                     
                     details["traceback"] = traceback
@@ -624,12 +624,6 @@ class Blockchain:
                 break
         
         return details
-
-    def trace_tx_output_forwards(self, txid: str, idx: int, start_block: Optional[int] = None):
-        pass
-
-    def trace_tx(self, txid: str, idx: int):
-        return self.trace_tx_output_backwards(txid, idx)
 
     def trace_transactions_by_attributes(
         self, 
@@ -735,7 +729,7 @@ class Blockchain:
 
         # Now compute the traces for each transaction
         for (txid, idx) in txids_with_blocks:
-            traces[(txid, idx)] = self.trace_tx(txid, idx)
+            traces[(txid, idx)] = self.trace_transaction(txid, idx)
         
         return traces
 
@@ -1222,18 +1216,3 @@ if __name__ == "__main__":
     display_d = time.time() - s
 
     print(f"Tracing took {trace_d}s, displaying took {display_d}s, total matching transactions was {len(traced.keys())}")
-
-    # print("Tracing", txid, idx)
-    # # print(blockchain.get_last_block().transactions[0])
-    # # print()
-    # h = json.loads(json.dumps(blockchain.trace_tx_output_backwards(txid, idx), default=lambda x: getattr(x, "__dict__", str)))
-    # print(json.dumps(h, indent=2, default=lambda x: getattr(x, "__dict__", str)))
-
-    # traceback = h
-
-    
-
-    # # print(visualise_tx(h["txid"], h["relevant_output"]["idx"], h["relevant_output"]["receiver"], h["relevant_output"]["resource"], h["relevant_output"]["quantity"], lookup))
-
-    # v = rec_vis(h, lookup)
-    # print(v)
