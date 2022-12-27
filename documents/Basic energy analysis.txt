@@ -1,3 +1,4 @@
+Single-Thread:
 Idle Wattage: 4.5W
 Idle+Mining Wattage: 32.0W
 Mining Wattage: 27.5W
@@ -5,8 +6,28 @@ Mining Wattage: 27.5W
 So 459000 hashes takes 27.5J
 Each hash takes 6e-5 J = 1.67e-11 kWh
 A litre of water takes around 0.093 kWh to boil
-So 5.57e9 hashes is the equivalent of boiling a kettle
+So 5.57e9 hashes is the equivalent of boiling a litre of water
 5.57e9 hashes at a rate of 4.59e5 hashes / seconds would take 12135s = 3.37 hours
 The # of hashes to mine of a block of difficulty d is f(d) = A * K^d where A and K are constants to derive
 So the number of kettles that could be boiled on average is A * K^d / 5.57e9 
 And the expected energy usage would be A * K^d * 1.67e-11 kWh = A * K^d * 6e-5 J
+
+Multi-Thread:
+Idle Wattage: 4.5W
+Idle+Mining Wattage: 137.5W
+Mining Wattage: 133W
+4,200,000 hashes per second
+So 4.2e6 hashes takes 133J
+Each hash takes 3.167e-5 J = 8.8e-12 kWh
+A litre of water takes around 0.093 kWh to boil
+So 1.06e10 hashes is the equivalent of boiling a litre of water
+1.06e10 hashes at a rate of 4.2e6 hashes / seconds would take 2524s = 42m 24s
+The # of hashes to mine of a block of difficulty d is f(d) = A * K^d where A and K are constants to derive
+So the number of kettles that could be boiled on average is A * K^d / 1.06e10 
+And the expected energy usage would be A * K^d * 8.8e-12 kWh = A * K^d * 3.167e-5 J
+
+In multi_threaded_py310.json we did 3304.5829s worth of computation
+So we boiled 3304.5829 / 2524 litres of water = 1.30926307 litres of water
+This used 0.121761466 kWh of energy
+1 kWh of energy is currently (27/12/22) priced at 34.0p so this cost 4.08p to run!
+In contrast, my CPU idling in 3304.5829s would use 0.0041 kWh which costs 0.14p to run!
