@@ -690,8 +690,6 @@ class Blockchain:
                         if output.idx is None:
                             raise BlockchainTracebackException(f"Output does not have an index")
 
-                        meets_participant_critera = sender_is_participant
-
                         # Search by product
                         if len(products) > 0:
                             if output.resource not in products:
