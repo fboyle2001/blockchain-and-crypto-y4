@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from dataclasses import dataclass
 
 import hashlib
@@ -9,8 +9,8 @@ import base58
 import multiprocessing
 import time
 
-assert "sha256" in hashlib.algorithms_available, "SHA256 is required for but it is unavailable on your system"
-assert "ripemd160" in hashlib.algorithms_available , "RIPEMD160 is required for but it is unavailable on your system"
+assert "sha256" in hashlib.algorithms_available, "SHA256 is required but it is unavailable on your system"
+assert "ripemd160" in hashlib.algorithms_available , "RIPEMD160 is required but it is unavailable on your system"
 
 transaction_types: List[str] = ["raw_material_creation", "material_conversion", "material_transfer", "financial_transfer", "coinbase"]
 
@@ -189,7 +189,7 @@ class Transaction:
     ):
         """
         Creates a new transaction, signs it and computes the transaction hash (txid)
-        **This does not validate the inp and out, this is the responsibilty of the miner!**
+        **This does not validate the inp and out, this is the responsibilty of the miner and the consensus!**
         """
 
         indexed_inp = [
@@ -309,7 +309,7 @@ class Block:
     def is_mined(self) -> bool:
         return self.header_hash is not None and self.header.nonce is not None
 
-    def get_mallable_mining_str(self) -> str:
+    def get_malleable_mining_str(self) -> str:
         # ends with {..., "nonce": |
         return json.dumps({**self.header.__dict__, "nonce": 1})[:-2]
 
@@ -341,6 +341,9 @@ class Block:
         )
 
         return Block(header, transactions)
+
+class BlockchainTracebackException(Exception):
+    pass
 
 class Blockchain:
     def __init__(self, difficulty: int, coinbase_reward: int = 100):
@@ -599,19 +602,6 @@ class Blockchain:
                     details["tx_timestamp"] = tx.content.timestamp
                     details["relevant_output"] = list(filter(lambda x: x.idx == idx, tx.content.out))[0]
 
-                    # Record the block that the transaction is in
-                    # details["block"] = {
-                    #     "header_hash": block.header_hash,
-                    #     "header": block.header
-                    # }
-
-                    # # Record the transaction details
-                    # details["tx"] = {
-                    #     "txid": tx.txid,
-                    #     "header": tx.header,
-                    #     "relevant_output": 
-                    # }
-
                     traceback = None
                     
                     # If there are no inputs then this was an initial transaction
@@ -633,10 +623,124 @@ class Blockchain:
             if len(details.keys()) > 0:
                 break
         
-        return details            
+        return details
+
+    def trace_tx_output_forwards(self, txid: str, idx: int, start_block: Optional[int] = None):
+        pass
+
+    def trace_tx(self, txid: str, idx: int):
+        return self.trace_tx_output_backwards(txid, idx)
+
+    def trace_transactions_by_attributes(
+        self, 
+        start_time: Optional[float] = None, 
+        end_time: Optional[float] = None, 
+        products: Optional[List[str]] = None, 
+        txids: Optional[List[Tuple[str, int]]] = None,
+        tx_types: Optional[List[str]] = None,
+        participants: Optional[List[str]] = None
+    ):
+        non_zeros = (start_time is not None) + (end_time is not None) + (products is not None) + (txids is not None) + (tx_types is not None) + (participants is not None)
+
+        if non_zeros == 0:
+            raise BlockchainTracebackException("Must specify at least one attribute to search by")
+
+        start_time = start_time if start_time is not None else 0
+        end_time = end_time if end_time is not None else datetime.datetime.now().timestamp()
+
+        if end_time <= start_time:
+            raise BlockchainTracebackException("end_time must be after the start_time for tracebacks")
+        
+        products = products if products is not None and len(products) != 0 else []
+        txids = txids if txids is not None and len(txids) != 0 else []
+
+        if len(txids) > 0 and non_zeros != 1:
+            raise BlockchainTracebackException("Searching by transaction IDs is mutually exclusive to other criteria")
+
+        tx_types = tx_types if tx_types is not None and len(tx_types) != 0 else []
+
+        for tx_type in tx_types:
+            if tx_type not in transaction_types:
+                raise BlockchainTracebackException(f"Invalid transaction type {tx_type}, valid options are: {transaction_types}")
+
+        participants = participants if participants is not None and len(participants) != 0 else []
+        txids_with_blocks: List[Tuple[str, int]] = []
+
+        # Find the transaction IDs according to the criteria
+        if len(txids) == 0:
+            for block in self.blocks: 
+                if not block.is_mined():
+                    raise BlockchainTracebackException(f"Block {block.header_hash} has not been mined")
+                
+                # Just for type checking
+                assert block.header_hash is not None
+
+                if not block.validate_integrity():
+                    raise BlockchainTracebackException(f"Unable to validate the transactions in block {block.header_hash}")
+                
+                for transaction in block.transactions:
+                    # Outside of the time range
+                    if not (start_time <= transaction.content.timestamp <= end_time):
+                        continue
+
+                    # Search by tx type
+                    if len(tx_types) > 0:
+                        if transaction.content.tx_type not in tx_types:
+                            continue
+                    
+                    transaction.content.tx_type
+
+                    sender_is_participant = len(participants) == 0 or (transaction.header.hashed_sender_public_key in participants)
+
+                    for output in transaction.content.out:
+                        if output.idx is None:
+                            raise BlockchainTracebackException(f"Output does not have an index")
+
+                        meets_participant_critera = sender_is_participant
+
+                        # Search by product
+                        if len(products) > 0:
+                            if output.resource not in products:
+                                continue
+                        
+                        # Search by participant
+                        if len(participants) > 0:
+                            if not(sender_is_participant or output.receiver in participants):
+                                continue
+                        
+                        # If we make here then this is a transaction we want
+                        txids_with_blocks.append((transaction.txid, output.idx))
+        else:
+            for block in self.blocks:
+                if not block.is_mined():
+                    raise BlockchainTracebackException(f"Block {block.header_hash} has not been mined")
+                
+                # Just for type checking
+                assert block.header_hash is not None
+
+                if not block.validate_integrity():
+                    raise BlockchainTracebackException(f"Unable to validate the transactions in block {block.header_hash}")
+                
+                for transaction in block.transactions:
+                    for output in transaction.content.out:
+                        for entry in txids:
+                            if transaction.txid == entry[0] and output.idx == entry[1]:
+                                txids_with_blocks.append(entry)
+                        
+                        if len(txids_with_blocks) == len(txids):
+                            break
+
+        # At this point we have the transactions to trace
+        traces = {}
+
+        # Now compute the traces for each transaction
+        for (txid, idx) in txids_with_blocks:
+            traces[(txid, idx)] = self.trace_tx(txid, idx)
+        
+        return traces
 
 def non_multi_threaded_block_miner(block: Block, verbose: bool = False):
-    mallable = block.get_mallable_mining_str()
+    malleable = block.get_malleable_mining_str()
     req = "0" * block.header.difficulty
     
     nonce = 0
@@ -644,7 +748,7 @@ def non_multi_threaded_block_miner(block: Block, verbose: bool = False):
     start_time = time.time()
 
     while True:
-        testable = mallable + str(nonce) + "}"
+        testable = malleable + str(nonce) + "}"
         header_hash = hashlib.sha256(hashlib.sha256(testable.encode()).digest()).hexdigest()
 
         if header_hash.startswith(req):
@@ -932,7 +1036,7 @@ def get_wallets(blockchain: Blockchain, identities: Dict[str, BlockchainIdentity
     
     return wallets
 
-def visualise_tx(txid, idx, address, resource, quantity, timestamp, tx_type, lookup):
+def visualise_tx(txid, block_hash, idx, address, resource, quantity, timestamp, tx_type, lookup):
     shortened_txid = f"{txid[:4]}...{txid[-4:]}[{idx}]"
     shortened_address = f"{address[:4]}...{address[-4:]}"
 
@@ -940,6 +1044,7 @@ def visualise_tx(txid, idx, address, resource, quantity, timestamp, tx_type, loo
         "",
         f"{shortened_txid}",
         "",
+        f"block: {block_hash[:4]}...{block_hash[-4:]}",
         f"ts: {timestamp}",
         f"type: {tx_type}",
         f"address: {shortened_address}",
@@ -974,6 +1079,7 @@ def _rec_vis(traceback, lookup):
     into_self = []
     self_block = visualise_tx(
         traceback["txid"], 
+        traceback["block_hash"],
         traceback["relevant_output"]["idx"], 
         traceback["relevant_output"]["receiver"], 
         traceback["relevant_output"]["resource"], 
@@ -1087,7 +1193,7 @@ if __name__ == "__main__":
         "retailer_5": BlockchainIdentity("1LW2uNLuRjRW14qg855NHNHudnnu4aPk4Z", "L471B8sYTpvroueVyCCT5dKBZgLxyEUsEnbNHf1LmShSak3kcog2")
     }
 
-    lookup = {iden.public_address: key for key, iden in participant_identities.items()}
+    lookup = {iden.public_address: key for key, iden in (participant_identities | miner_identities).items()}
 
     blockchain = Blockchain(difficulty=1)
     # competing_miners = 1
@@ -1099,20 +1205,35 @@ if __name__ == "__main__":
     part_3_b(blockchain, miner, participant_identities)
 
     # print(json.dumps(get_wallets(blockchain, participant_identities | miner_identities), indent=2))
-    txid = blockchain.get_last_block().transactions[1].txid
+    txid = blockchain.blocks[-1].transactions[0].txid
     idx = 0
 
-    print("Tracing", txid, idx)
-    # print(blockchain.get_last_block().transactions[0])
-    # print()
-    h = json.loads(json.dumps(blockchain.trace_tx_output_backwards(txid, idx), default=lambda x: getattr(x, "__dict__", str)))
-    print(json.dumps(h, indent=2, default=lambda x: getattr(x, "__dict__", str)))
+    s = time.time()
+    traced = blockchain.trace_transactions_by_attributes(end_time=time.time())
+    trace_d = time.time() - s
 
-    traceback = h
+    s = time.time()
+    for (txid, idx) in traced.keys():
+        print(f"Found transaction {txid}[{idx}] matching criteria")
+        dict_trace = json.loads(json.dumps(traced[(txid, idx)], default=lambda x: getattr(x, "__dict__", str)))
+        vis_trace = rec_vis(dict_trace, lookup)
+        print(vis_trace)
+        print()
+    display_d = time.time() - s
+
+    print(f"Tracing took {trace_d}s, displaying took {display_d}s, total matching transactions was {len(traced.keys())}")
+
+    # print("Tracing", txid, idx)
+    # # print(blockchain.get_last_block().transactions[0])
+    # # print()
+    # h = json.loads(json.dumps(blockchain.trace_tx_output_backwards(txid, idx), default=lambda x: getattr(x, "__dict__", str)))
+    # print(json.dumps(h, indent=2, default=lambda x: getattr(x, "__dict__", str)))
+
+    # traceback = h
 
     
 
-    # print(visualise_tx(h["txid"], h["relevant_output"]["idx"], h["relevant_output"]["receiver"], h["relevant_output"]["resource"], h["relevant_output"]["quantity"], lookup))
+    # # print(visualise_tx(h["txid"], h["relevant_output"]["idx"], h["relevant_output"]["receiver"], h["relevant_output"]["resource"], h["relevant_output"]["quantity"], lookup))
 
-    v = rec_vis(h, lookup)
-    print(v)
+    # v = rec_vis(h, lookup)
+    # print(v)

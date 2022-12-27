@@ -1,0 +1,12 @@
+Idle Wattage: 4.5W
+Idle+Mining Wattage: 32.0W
+Mining Wattage: 27.5W
+1e6 hashes per 2.18s => 459000 hashes/second
+So 459000 hashes takes 27.5J
+Each hash takes 6e-5 J = 1.67e-11 kWh
+A litre of water takes around 0.093 kWh to boil
+So 5.57e9 hashes is the equivalent of boiling a kettle
+5.57e9 hashes at a rate of 4.59e5 hashes / seconds would take 12135s = 3.37 hours
+The # of hashes to mine of a block of difficulty d is f(d) = A * K^d where A and K are constants to derive
+So the number of kettles that could be boiled on average is A * K^d / 5.57e9 
+And the expected energy usage would be A * K^d * 1.67e-11 kWh = A * K^d * 6e-5 J
