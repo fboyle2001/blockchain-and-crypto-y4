@@ -1158,9 +1158,12 @@ def rec_vis(traceback, lookup):
     blocks = _rec_vis(traceback, lookup)
     return blocks
 
-def multi_threaded_miner_target(idx: int, malleable: str, difficulty: int, queue: multiprocessing.Queue, private_queue: multiprocessing.Queue):
+def multi_threaded_miner_target(idx: int, malleable: str, difficulty: int, queue: multiprocessing.Queue, private_queue: multiprocessing.Queue, start_nonce: int, time_remaining: float):
     target = "0" * difficulty
-    nonce = 0
+    nonce = start_nonce
+
+    print(f"{idx}: Restarting with difficulty {difficulty} with start nonce {nonce}, time remaining is {time_remaining}s")
+
     start_time = time.time()
 
     prehashed = hashlib.sha256(malleable.encode())
@@ -1174,28 +1177,30 @@ def multi_threaded_miner_target(idx: int, malleable: str, difficulty: int, queue
 
         if nonce != 0 and nonce % 1000000 == 0:
             runtime = time.time() - start_time
-            hash_rate = nonce / (runtime + 1e-8)
+            hash_rate = (nonce - start_nonce) / (runtime + 1e-8)
 
             if private_queue.full():
                 private_queue.get()
 
-            private_queue.put(hash_rate)
-            print(f"{idx}: Nonce: {nonce}, hashes/second: {hash_rate} hashes/s")
+            private_queue.put({ "hash_rate": hash_rate, "interrupt_nonce": nonce, "time_remaining": time_remaining - runtime })
+            print(f"{idx}: Nonce: {nonce}, hashes/second: {hash_rate} hashes/s [D: {difficulty}]")
 
-            if runtime > 3600:
+            if runtime > time_remaining:
                 queue.put({ "success": False })
+                return
 
         if header_hash_digest[0] == 0x00:
             header_hash_hex = header_hash_digest.hex()
             if header_hash_hex.startswith(target):
-                hash_rate = nonce / (time.time() - start_time + 1e-8)
+                runtime = time.time() - start_time
+                hash_rate = (nonce - start_nonce) / (runtime + 1e-8)
 
                 if private_queue.full():
                     private_queue.get()
 
-                private_queue.put(hash_rate)
+                private_queue.put({ "hash_rate": hash_rate, "interrupt_nonce": nonce - 1, "time_remaining": time_remaining - runtime })
                 queue.put({ "success": True, "idx": idx, "solution": nonce })
-                print(f"idx: {idx}, Solved {nonce}")
+                print(f"idx: {idx}, Solved difficulty {difficulty} with nonce {nonce}")
                 return nonce
 
         nonce += 1
@@ -1227,7 +1232,7 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                     header_hash.update(nonce_str.encode())
                     header_hash_digest = hashlib.sha256(header_hash.digest()).digest()
 
-                    if nonce != 0 and nonce % 10000 == 0:
+                    if nonce != 0 and nonce % 1000000 == 0:
                         current_time = time.time()
                         print(f"Nonce: {nonce}, hashes/second: {nonce / (current_time - start_time)} hashes/s")
 
@@ -1267,6 +1272,9 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
     else:
         # multiprocess
         miner_blocks = [blockchain.create_unmined_block(miner, [], 1) for miner in miners]
+        interrupt_nonces = [0 for _ in range(len(miners))]
+        time_remaining_arr = [3600 for _ in range(len(miners))]
+        cum_time = 0
 
         try:
             for difficulty in range(1, max_difficulty + 1):
@@ -1278,7 +1286,7 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                     private_queue = multiprocessing.Queue(maxsize=1)
                     process = multiprocessing.Process(
                         target=multi_threaded_miner_target,
-                        args=(idx, miner_blocks[idx].get_malleable_mining_str(), difficulty, halting_queue, private_queue)
+                        args=(idx, miner_blocks[idx].get_malleable_mining_str(), difficulty, halting_queue, private_queue, interrupt_nonces[idx], time_remaining_arr[idx])
                     )
                     processes.append(process)
                     private_queues.append(private_queue)
@@ -1289,7 +1297,8 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                     process.start()
 
                 result = halting_queue.get()
-                delta_time = time.time() - start_time
+                delta_time = cum_time + time.time() - start_time
+                cum_time = delta_time
 
                 for process in processes:
                     process.terminate()
@@ -1297,11 +1306,15 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                 hash_rate_sum = 0
                 real_count = 0
 
-                for private_queue in private_queues:
+                for i, private_queue in enumerate(private_queues):
                     if private_queue.empty():
                         continue
 
-                    hash_rate_sum += private_queue.get()
+                    state_dict = private_queue.get()
+
+                    hash_rate_sum += state_dict["hash_rate"]
+                    interrupt_nonces[i] = state_dict["interrupt_nonce"]
+                    time_remaining_arr[i] = state_dict["time_remaining"]
                     real_count += 1
 
                 avg_hash_rate = hash_rate_sum / len(miners)
@@ -1310,6 +1323,7 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                 print(f"Difficulty {difficulty}")
                 print(f"Overall Hash Rate: {hash_rate_sum} hashes/s")
                 print(f"Avg. Hash Rate: {avg_hash_rate} hashes/s")
+                print(f"Took {delta_time}s (cum: {cum_time})")
                 print(json.dumps(result))
                 print()
 
@@ -1319,7 +1333,8 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                     "per_hash_rate": avg_hash_rate,
                     "nonce": result["solution"] if success else -1,
                     "miner_idx": result["idx"] if success else -1,
-                    "delta_time": delta_time
+                    "delta_time": delta_time,
+                    "interrupt_nonces": [x for x in interrupt_nonces]
                 }
         except KeyboardInterrupt:
             pass
@@ -1382,4 +1397,4 @@ if __name__ == "__main__":
 
     # print(f"Tracing took {trace_d}s, displaying took {display_d}s, total matching transactions was {len(traced.keys())}")
 
-    part_4(blockchain, list(participant_identities.values())[:1])
+    part_4(blockchain, list(participant_identities.values())[:8])

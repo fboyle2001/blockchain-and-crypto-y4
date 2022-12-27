@@ -14,8 +14,9 @@ def func(idx):
     dt = time.time() - st
     print(f"Process {idx} took {dt}s to complete: hash rate is {10000000 / dt}")
 
-def hash_updating_miner_runnable(idx: int, malleable: str, difficulty: int, q, priv_queue):
-    target = "0" * difficulty
+def hash_updating_miner_runnable(idx: int, malleable: str, shared_difficulty, q, priv_queue):
+    known_diff = shared_difficulty.value
+    target = "0" * known_diff
     nonce = 0
     start_time = time.time()
 
@@ -35,13 +36,20 @@ def hash_updating_miner_runnable(idx: int, malleable: str, difficulty: int, q, p
             priv_queue.put(hash_rate)
             print(f"{idx}: Nonce: {nonce}, hashes/second: {hash_rate} hashes/s")
 
+            if known_diff != shared_difficulty.value:
+                print(f"{idx}: Changing difficulty to {shared_difficulty.value}")
+                known_diff = shared_difficulty.value
+                target = "0" * known_diff
+
         if header_hash_digest[0] == 0x00:
             header_hash_hex = header_hash_digest.hex()
             if header_hash_hex.startswith(target):
-                print(f"{idx}: Found sol as {nonce}")
+                print(f"{idx}: Found sol as {nonce} for difficulty {known_diff}")
                 print(f"Hashes/second: {nonce / (time.time() - start_time)} hashes/s")
+                known_diff += 1
+                shared_difficulty.value = known_diff
+                target = "0" * known_diff
                 q.put(1)
-                return nonce
 
         nonce += 1
 
@@ -74,17 +82,21 @@ if __name__ == "__main__":
     processes = []
     priv_queues = []
     queue = multiprocessing.Queue(maxsize=1)
+    shared_difficulty = multiprocessing.Value("i", 6)
 
     for i in range(count):
         block = chain.create_unmined_block(idens[i], [], difficulty=difficulty)
         priv_queue = multiprocessing.Queue(maxsize=1)
         priv_queues.append(priv_queue)
-        p = multiprocessing.Process(target=hash_updating_miner_runnable, args=(i, block.get_malleable_mining_str(), difficulty, queue, priv_queue))
+        p = multiprocessing.Process(target=hash_updating_miner_runnable, args=(i, block.get_malleable_mining_str(), shared_difficulty, queue, priv_queue))
         processes.append(p)
 
     for process in processes:
         process.start()
 
+    queue.get()
+    queue.get()
+    queue.get()
     queue.get()
 
     for process in processes:
