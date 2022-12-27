@@ -352,8 +352,9 @@ class Blockchain:
         self.utxos: Dict[str, Dict[int, Transaction.Content.TXOutput]] = {}
         self.coinbase_reward = coinbase_reward
 
-    def create_unmined_block(self, miner: BlockchainIdentity, transactions: List[Transaction]):
+    def create_unmined_block(self, miner: BlockchainIdentity, transactions: List[Transaction], difficulty: Optional[int] = None):
         previous_block_hash = "0" * 64
+        difficulty = difficulty if difficulty is not None else self.difficulty
 
         # Link it to the previous blocks
         if len(self) > 0:
@@ -1157,15 +1158,184 @@ def rec_vis(traceback, lookup):
     blocks = _rec_vis(traceback, lookup)
     return blocks
 
-if __name__ == "__main__":
-    miner_identities = {
-        "miner_1": BlockchainIdentity("1J5txDKRWLtHCc4ppFKYLEkWicAy5PtZ6S", "Kwc4dJTvEeFMMg3fHwuE1ZujDPckztiFGKespwoPKN3qx2wm8wFT"),
-        #"miner_2": BlockchainIdentity("1CePNpiphrENh1jPyhWrBPFh8wihUbodLc", "L1Q23cZnwTDbcPUL9pBb9PiUsbGTwFsxMnzqKamCnyXrwKULdriR"),
-        #"miner_3": BlockchainIdentity("18i6ajSi9TvN8RMN1bKP3UFAciAeiZzcov", "L5nyTvjeS8niFU8W6MRXVbJyb9d4Gqgcnq9QfNM7xZDf3by1EneM"),
-        #"miner_4": BlockchainIdentity("14WZS1BX5t9YxTc7dyPWmYAM71m8jKt7eK", "L2r2b3cmdem9gUzw73oFqnQ7ppoVb4cCGUE9DMsXcNbAEZjWbDpa")
-    }
+def multi_threaded_miner_target(idx: int, malleable: str, difficulty: int, queue: multiprocessing.Queue, private_queue: multiprocessing.Queue):
+    target = "0" * difficulty
+    nonce = 0
+    start_time = time.time()
 
+    prehashed = hashlib.sha256(malleable.encode())
+
+    while True:
+        header_hash = prehashed.copy()
+        nonce_str = nonce.__str__() + "}"
+
+        header_hash.update(nonce_str.encode())
+        header_hash_digest = hashlib.sha256(header_hash.digest()).digest()
+
+        if nonce != 0 and nonce % 1000000 == 0:
+            runtime = time.time() - start_time
+            hash_rate = nonce / (runtime + 1e-8)
+
+            if private_queue.full():
+                private_queue.get()
+
+            private_queue.put(hash_rate)
+            print(f"{idx}: Nonce: {nonce}, hashes/second: {hash_rate} hashes/s")
+
+            if runtime > 3600:
+                queue.put({ "success": False })
+
+        if header_hash_digest[0] == 0x00:
+            header_hash_hex = header_hash_digest.hex()
+            if header_hash_hex.startswith(target):
+                hash_rate = nonce / (time.time() - start_time + 1e-8)
+
+                if private_queue.full():
+                    private_queue.get()
+
+                private_queue.put(hash_rate)
+                queue.put({ "success": True, "idx": idx, "solution": nonce })
+                print(f"idx: {idx}, Solved {nonce}")
+                return nonce
+
+        nonce += 1
+
+def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficulty: int = 10):
+    max_duration = 3600 # 1 hour in seconds
+    results = {}
+
+    if len(miners) == 1:
+        miner = miners[0]
+        # Difficulty is irrelevant this is only used for testing the mining
+        test_block = blockchain.create_unmined_block(miner, [], 1)
+
+        try:
+            for difficulty in range(1, max_difficulty + 1):
+                print(f"Starting difficulty {difficulty}")
+                target = "0" * difficulty
+                nonce = 0
+                success = False
+
+                start_time = time.time()
+
+                prehashed = hashlib.sha256(test_block.get_malleable_mining_str().encode())
+
+                while True:
+                    header_hash = prehashed.copy()
+                    nonce_str = nonce.__str__() + "}"
+
+                    header_hash.update(nonce_str.encode())
+                    header_hash_digest = hashlib.sha256(header_hash.digest()).digest()
+
+                    if nonce != 0 and nonce % 10000 == 0:
+                        current_time = time.time()
+                        print(f"Nonce: {nonce}, hashes/second: {nonce / (current_time - start_time)} hashes/s")
+
+                        if current_time - start_time > max_duration:
+                            break
+
+                    if header_hash_digest[0] == 0x00:
+                        header_hash_hex = header_hash_digest.hex()
+                        if header_hash_hex.startswith(target):
+                            success = True
+                            break
+
+                    nonce += 1
+
+                end_time = time.time()
+                delta_time = end_time - start_time
+
+                print(f"Mining completed at difficulty {difficulty} in {delta_time}s")
+
+                if success:
+                    print(f"Solution nonce: {nonce}")
+                else:
+                    print("Failed to find the solution hash in the allocated time")
+                
+                hash_rate = nonce / (delta_time + 1e-8)
+                print(f"Final hash rate: {hash_rate} hashes/s")
+                print()
+
+                results[difficulty] = {
+                    "success": success,
+                    "hash_rate": hash_rate,
+                    "nonce": nonce if success else -1,
+                    "delta_time": delta_time
+                }
+        except KeyboardInterrupt:
+            print("Halted")
+    else:
+        # multiprocess
+        miner_blocks = [blockchain.create_unmined_block(miner, [], 1) for miner in miners]
+
+        try:
+            for difficulty in range(1, max_difficulty + 1):
+                processes = []
+                private_queues = []
+                halting_queue = multiprocessing.Queue(maxsize=1)
+
+                for idx, miner in enumerate(miners):
+                    private_queue = multiprocessing.Queue(maxsize=1)
+                    process = multiprocessing.Process(
+                        target=multi_threaded_miner_target,
+                        args=(idx, miner_blocks[idx].get_malleable_mining_str(), difficulty, halting_queue, private_queue)
+                    )
+                    processes.append(process)
+                    private_queues.append(private_queue)
+                
+                start_time = time.time()
+
+                for process in processes:
+                    process.start()
+
+                result = halting_queue.get()
+                delta_time = time.time() - start_time
+
+                for process in processes:
+                    process.terminate()
+
+                hash_rate_sum = 0
+                real_count = 0
+
+                for private_queue in private_queues:
+                    if private_queue.empty():
+                        continue
+
+                    hash_rate_sum += private_queue.get()
+                    real_count += 1
+
+                avg_hash_rate = hash_rate_sum / len(miners)
+                success = result["success"]
+
+                print(f"Difficulty {difficulty}")
+                print(f"Overall Hash Rate: {hash_rate_sum} hashes/s")
+                print(f"Avg. Hash Rate: {avg_hash_rate} hashes/s")
+                print(json.dumps(result))
+                print()
+
+                results[difficulty] = {
+                    "success": success,
+                    "hash_rate": hash_rate_sum,
+                    "per_hash_rate": avg_hash_rate,
+                    "nonce": result["solution"] if success else -1,
+                    "miner_idx": result["idx"] if success else -1,
+                    "delta_time": delta_time
+                }
+        except KeyboardInterrupt:
+            pass
+
+    with open(f"hashing_result_{time.time()}.json", "w+") as fp:
+        json.dump({
+            "miner_count": len(miners),
+            "results": results
+        }, fp, indent=2)
+
+    print("Complete")
+
+if __name__ == "__main__":
     participant_identities = {
+        "miner_1": BlockchainIdentity("1J5txDKRWLtHCc4ppFKYLEkWicAy5PtZ6S", "Kwc4dJTvEeFMMg3fHwuE1ZujDPckztiFGKespwoPKN3qx2wm8wFT"),
+
         "farmer_1": BlockchainIdentity("1GTpnkyNdR8foqbdfgv8JkWxMgvDNRGxHV", "KyYAA6BXCkW1H2ZxL9UgpdsL7Y8RZNRmr25xGirR7YbqHsXCPgL1"),
         "farmer_2": BlockchainIdentity("1Gq7q7CjhFLLJVsFKV72rbNJQNZ3TCtXd2", "L1ABw5f7tbAmxaL2vzKF8qMwPFEJszkLYJzLyxekccJjJrmQ4La9"),
         "farmer_3": BlockchainIdentity("19mGEKM611fHFnztN8BmVRRjyhSAfGf4aP", "L4Mv6qu6kguwpf8WyMpoifgqYt6BsDiD1esYQqfVLszfaSeYSJt9"),
@@ -1185,32 +1355,31 @@ if __name__ == "__main__":
         "retailer_5": BlockchainIdentity("1LW2uNLuRjRW14qg855NHNHudnnu4aPk4Z", "L471B8sYTpvroueVyCCT5dKBZgLxyEUsEnbNHf1LmShSak3kcog2")
     }
 
-    lookup = {iden.public_address: key for key, iden in (participant_identities | miner_identities).items()}
+    lookup = {iden.public_address: key for key, iden in participant_identities.items()}
 
     blockchain = Blockchain(difficulty=1)
-    # competing_miners = 1
-    # assert 1 <= competing_miners <= len(miner_identities), "Invalid number of miners"
-    # selected_miners = list(miner_identities.values())[:competing_miners]
-    miner = miner_identities["miner_1"]
+    miner = participant_identities["miner_1"]
 
     part_3_a(blockchain, miner)
     part_3_b(blockchain, miner, participant_identities)
 
     # print(json.dumps(get_wallets(blockchain, participant_identities | miner_identities), indent=2))
-    txid = blockchain.blocks[-1].transactions[0].txid
-    idx = 0
+    # txid = blockchain.blocks[-1].transactions[0].txid
+    # idx = 0
 
-    s = time.time()
-    traced = blockchain.trace_transactions_by_attributes(end_time=time.time())
-    trace_d = time.time() - s
+    # s = time.time()
+    # traced = blockchain.trace_transactions_by_attributes(end_time=time.time())
+    # trace_d = time.time() - s
 
-    s = time.time()
-    for (txid, idx) in traced.keys():
-        print(f"Found transaction {txid}[{idx}] matching criteria")
-        dict_trace = json.loads(json.dumps(traced[(txid, idx)], default=lambda x: getattr(x, "__dict__", str)))
-        vis_trace = rec_vis(dict_trace, lookup)
-        print(vis_trace)
-        print()
-    display_d = time.time() - s
+    # s = time.time()
+    # for (txid, idx) in traced.keys():
+    #     print(f"Found transaction {txid}[{idx}] matching criteria")
+    #     dict_trace = json.loads(json.dumps(traced[(txid, idx)], default=lambda x: getattr(x, "__dict__", str)))
+    #     vis_trace = rec_vis(dict_trace, lookup)
+    #     print(vis_trace)
+    #     print()
+    # display_d = time.time() - s
 
-    print(f"Tracing took {trace_d}s, displaying took {display_d}s, total matching transactions was {len(traced.keys())}")
+    # print(f"Tracing took {trace_d}s, displaying took {display_d}s, total matching transactions was {len(traced.keys())}")
+
+    part_4(blockchain, list(participant_identities.values())[:1])

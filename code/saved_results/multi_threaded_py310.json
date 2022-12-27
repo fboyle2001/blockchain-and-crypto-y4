@@ -1,0 +1,85 @@
+{
+  "miner_count": 8,
+  "results": {
+    "1": {
+      "success": true,
+      "hash_rate": 21100000000.0,
+      "per_hash_rate": 2637500000.0,
+      "nonce": 211,
+      "miner_idx": 0,
+      "delta_time": 0.1346132755279541
+    },
+    "2": {
+      "success": true,
+      "hash_rate": 9400000000.0,
+      "per_hash_rate": 1175000000.0,
+      "nonce": 94,
+      "miner_idx": 1,
+      "delta_time": 0.13062310218811035
+    },
+    "3": {
+      "success": true,
+      "hash_rate": 211517.51250299055,
+      "per_hash_rate": 26439.68906287382,
+      "nonce": 211,
+      "miner_idx": 0,
+      "delta_time": 0.1296536922454834
+    },
+    "4": {
+      "success": true,
+      "hash_rate": 522532.5375058517,
+      "per_hash_rate": 65316.567188231464,
+      "nonce": 3127,
+      "miner_idx": 2,
+      "delta_time": 0.14461398124694824
+    },
+    "5": {
+      "success": true,
+      "hash_rate": 542621.8670211515,
+      "per_hash_rate": 67827.73337764393,
+      "nonce": 30847,
+      "miner_idx": 7,
+      "delta_time": 0.2184162139892578
+    },
+    "6": {
+      "success": true,
+      "hash_rate": 4326062.0889966665,
+      "per_hash_rate": 540757.7611245833,
+      "nonce": 2664221,
+      "miner_idx": 4,
+      "delta_time": 5.021576881408691
+    },
+    "7": {
+      "success": true,
+      "hash_rate": 4265228.6409762725,
+      "per_hash_rate": 533153.5801220341,
+      "nonce": 68342387,
+      "miner_idx": 4,
+      "delta_time": 128.3010528087616
+    },
+    "8": {
+      "success": true,
+      "hash_rate": 4165396.299470476,
+      "per_hash_rate": 520674.5374338095,
+      "nonce": 417953723,
+      "miner_idx": 4,
+      "delta_time": 801.9543867111206
+    },
+    "9": {
+      "success": true,
+      "hash_rate": 4206559.204334504,
+      "per_hash_rate": 525819.900541813,
+      "nonce": 1232473519,
+      "miner_idx": 7,
+      "delta_time": 2368.547905445099
+    },
+    "10": {
+      "success": false,
+      "hash_rate": 4137146.793347976,
+      "per_hash_rate": 517143.349168497,
+      "nonce": -1,
+      "miner_idx": -1,
+      "delta_time": 3600.2445974349976
+    }
+  }
+}

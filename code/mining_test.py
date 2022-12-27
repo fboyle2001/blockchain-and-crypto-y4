@@ -1,6 +1,5 @@
 import hashlib
 import time
-import multiprocessing
 import copy
 import sys
 
