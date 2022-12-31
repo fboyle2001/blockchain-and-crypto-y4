@@ -1,0 +1,185 @@
+{
+  "miner_count": 8,
+  "results": {
+    "1": {
+      "success": true,
+      "hash_rate": 900000000.0,
+      "per_hash_rate": 112500000.0,
+      "nonce": 9,
+      "miner_idx": 0,
+      "delta_time": 0.1406238079071045,
+      "interrupt_nonces": [
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "2": {
+      "success": true,
+      "hash_rate": 100000000.0,
+      "per_hash_rate": 12500000.0,
+      "nonce": 9,
+      "miner_idx": 0,
+      "delta_time": 0.28025102615356445,
+      "interrupt_nonces": [
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "3": {
+      "success": true,
+      "hash_rate": 100000000.0,
+      "per_hash_rate": 12500000.0,
+      "nonce": 9,
+      "miner_idx": 0,
+      "delta_time": 0.421872615814209,
+      "interrupt_nonces": [
+        8,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    "4": {
+      "success": true,
+      "hash_rate": 508513.10032005614,
+      "per_hash_rate": 63564.13754000702,
+      "nonce": 10650,
+      "miner_idx": 5,
+      "delta_time": 0.6153557300567627,
+      "interrupt_nonces": [
+        8,
+        0,
+        0,
+        0,
+        0,
+        10649,
+        0,
+        0
+      ]
+    },
+    "5": {
+      "success": true,
+      "hash_rate": 546830.2941455494,
+      "per_hash_rate": 68353.78676819368,
+      "nonce": 149432,
+      "miner_idx": 2,
+      "delta_time": 1.034235954284668,
+      "interrupt_nonces": [
+        8,
+        0,
+        149431,
+        0,
+        0,
+        10649,
+        0,
+        0
+      ]
+    },
+    "6": {
+      "success": true,
+      "hash_rate": 539282.4170122199,
+      "per_hash_rate": 67410.30212652749,
+      "nonce": 311412,
+      "miner_idx": 3,
+      "delta_time": 1.7592978477478027,
+      "interrupt_nonces": [
+        8,
+        0,
+        149431,
+        311411,
+        0,
+        10649,
+        0,
+        0
+      ]
+    },
+    "7": {
+      "success": true,
+      "hash_rate": 4372016.035393993,
+      "per_hash_rate": 546502.0044242492,
+      "nonce": 22809841,
+      "miner_idx": 2,
+      "delta_time": 43.39400887489319,
+      "interrupt_nonces": [
+        22000000,
+        22000000,
+        22809840,
+        22000000,
+        22000000,
+        22000000,
+        22000000,
+        22000000
+      ]
+    },
+    "8": {
+      "success": true,
+      "hash_rate": 4184911.497207772,
+      "per_hash_rate": 523113.9371509715,
+      "nonce": 715599235,
+      "miner_idx": 5,
+      "delta_time": 1375.4983129501343,
+      "interrupt_nonces": [
+        720000000,
+        719000000,
+        718000000,
+        716000000,
+        716000000,
+        715599234,
+        722000000,
+        722000000
+      ]
+    },
+    "9": {
+      "success": false,
+      "hash_rate": 4106069.5016554,
+      "per_hash_rate": 513258.687706925,
+      "nonce": -1,
+      "miner_idx": -1,
+      "delta_time": 3603.1598060131073,
+      "interrupt_nonces": [
+        1885000000,
+        1849000000,
+        1858000000,
+        1852000000,
+        1855000000,
+        1859000000,
+        1858000000,
+        1876000000
+      ]
+    },
+    "10": {
+      "success": false,
+      "hash_rate": 0.0,
+      "per_hash_rate": 0.0,
+      "nonce": -1,
+      "miner_idx": -1,
+      "delta_time": 3603.315390110016,
+      "interrupt_nonces": [
+        1885000000,
+        1849000000,
+        1858000000,
+        1852000000,
+        1855000000,
+        1859000000,
+        1858000000,
+        1876000000
+      ]
+    }
+  }
+}

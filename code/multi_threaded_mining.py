@@ -19,6 +19,7 @@ def hash_updating_miner_runnable(idx: int, malleable: str, shared_difficulty, q,
     target = "0" * known_diff
     nonce = 0
     start_time = time.time()
+    int_goal = 16 ** (64 - shared_difficulty.value) - 1
 
     prehashed = hashlib.sha256((str(idx) + malleable).encode())
 
@@ -28,6 +29,7 @@ def hash_updating_miner_runnable(idx: int, malleable: str, shared_difficulty, q,
 
         header_hash.update(nonce_str.encode())
         header_hash_digest = hashlib.sha256(header_hash.digest()).digest()
+        value = int.from_bytes(header_hash_digest[::-1], "little")
 
         if nonce != 0 and nonce % 100000 == 0:
             if priv_queue.full():
@@ -41,21 +43,34 @@ def hash_updating_miner_runnable(idx: int, malleable: str, shared_difficulty, q,
                 known_diff = shared_difficulty.value
                 target = "0" * known_diff
 
-        if header_hash_digest[0] == 0x00:
-            header_hash_hex = header_hash_digest.hex()
-            if header_hash_hex.startswith(target):
-                print(f"{idx}: Found sol as {nonce} for difficulty {known_diff}")
-                print(f"Hashes/second: {nonce / (time.time() - start_time)} hashes/s")
-                known_diff += 1
-                shared_difficulty.value = known_diff
-                target = "0" * known_diff
-                q.put(1)
+        # if header_hash_digest[0] == 0x00:
+        #     header_hash_hex = header_hash_digest.hex()
+        #     if header_hash_hex.startswith(target):
+        #         print(f"{idx}: Found sol as {nonce} for difficulty {known_diff}")
+        #         print(f"Hashes/second: {nonce / (time.time() - start_time)} hashes/s")
+        #         print(f"As int: L: {hex(int.from_bytes(header_hash_digest[::-1], 'little'))} B: {hex(int.from_bytes(header_hash_digest[::-1], 'big'))}")
+
+        #         print(value, int_goal, value < int_goal)
+
+        #         known_diff += 1
+        #         shared_difficulty.value = known_diff
+        #         target = "0" * known_diff
+        #         q.put(1)
+        
+        if value < int_goal:
+            print(f"{idx}: Found sol as {nonce} for difficulty {known_diff}")
+            print(f"Hashes/second: {nonce / (time.time() - start_time)} hashes/s")
+            print(f"As int: L: {hex(int.from_bytes(header_hash_digest[::-1], 'little'))} B: {hex(int.from_bytes(header_hash_digest[::-1], 'big'))}")
+            known_diff += 1
+            shared_difficulty.value = known_diff
+            target = "0" * known_diff
+            q.put(1)
 
         nonce += 1
 
 if __name__ == "__main__":
     count = 8
-    difficulty = 6
+    difficulty = 3
 
     chain = Blockchain(1)
     idens = [
@@ -95,9 +110,9 @@ if __name__ == "__main__":
         process.start()
 
     queue.get()
-    queue.get()
-    queue.get()
-    queue.get()
+    #queue.get()
+    #queue.get()
+    # queue.get()
 
     for process in processes:
         process.terminate()
