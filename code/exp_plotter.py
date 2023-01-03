@@ -14,6 +14,13 @@ data = {
     # 9: [2368.5479, 925.0658]
 }
 
+energy_constant = 4.2e6 * 8.8e-12
+energy_version = False
+m = 10
+
+if not energy_version:
+    energy_constant = 1
+
 difficulties = []
 
 min_delta_times = []
@@ -31,9 +38,9 @@ for difficulty, times in data.items():
     max_delta_times.append(max_dt)
 
 difficulties = np.array(difficulties)
-min_delta_times = np.array(min_delta_times)
-avg_delta_times = np.array(avg_delta_times)
-max_delta_times = np.array(max_delta_times)
+min_delta_times = np.array(min_delta_times) * energy_constant
+avg_delta_times = np.array(avg_delta_times) * energy_constant
+max_delta_times = np.array(max_delta_times) * energy_constant
 err_delta_times = np.array(list(zip(avg_delta_times - min_delta_times, max_delta_times - avg_delta_times))).T
 
 excluded = None
@@ -42,9 +49,14 @@ excluded = None
 (A_avg, B_avg), _ = opt.curve_fit(lambda x, a, b: a * np.exp(b * x), difficulties[:excluded], avg_delta_times[:excluded])
 (A_max, B_max), _ = opt.curve_fit(lambda x, a, b: a * np.exp(b * x), difficulties[:excluded], max_delta_times[:excluded])
 
+# if energy_version:
+#     A_min *= energy_constant
+#     A_avg *= energy_constant
+#     A_max *= energy_constant
+
 # Plot the exponentially fitted curve
 def plot_exp_curve(A, B, color):
-    x = np.linspace(0, max(10, max(difficulties)), 1000)
+    x = np.linspace(0, max(m, max(difficulties)), 1000)
     y = A * np.exp(B * x)
     plt.plot(x, y, color=color)
 
@@ -56,7 +68,7 @@ plot_exp_curve(A_max, B_max, "red")
 # Plot the original data points
 plt.xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 plt.xlabel("Difficulty")
-plt.ylabel("Time Taken (s)")
+plt.ylabel("Energy Usage (kWh)" if energy_version else "Time Taken (s)")
 plt.errorbar(difficulties, avg_delta_times, yerr=err_delta_times, color="blue", fmt=".", capsize=4) # type: ignore
 plt.legend(
     [
@@ -67,18 +79,9 @@ plt.legend(
 )
 plt.show()
 
-hash_rate = 4199376
-
 diffs = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
 
 for difficulty in range(1, 11):
     expected = A_avg * np.exp(B_avg * difficulty)
     max_ = A_max * np.exp(B_max * difficulty)
     min_ = A_min * np.exp(B_min * difficulty)
-
-    pm = max(max_ - expected, expected - min_)
-
-    hash_expected = hash_rate * expected
-    hash_pm = hash_rate * pm
-
-    print(difficulty, f"{expected:.4f}+{pm:.4f}", f"{hash_expected:.3E}+{hash_pm:.3E}")

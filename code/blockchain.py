@@ -921,7 +921,7 @@ def multi_threaded_miner_target(idx: int, malleable: str, difficulty: int, queue
         # Fast check, if the first byte is not 0x00 then it cannot be the solution
         # This is a direct memory comparison for a single byte so it is quick and leads to
         # a small (~5%) increase to the hashing rate by avoiding the need to convert to hex
-        if header_hash_digest[0] == 0x00:
+        if header_hash_digest[0] == 0x00 or difficulty == 1:
             header_hash_hex = header_hash_digest.hex()
 
             # Check the hash meets the difficulty requirements

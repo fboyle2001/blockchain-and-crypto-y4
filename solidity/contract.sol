@@ -5,7 +5,6 @@ pragma solidity ^0.8.7 <0.9.0;
 contract ItemStorage {
     // A singular item
     struct Item {
-        uint256 id;
         string recycleState;
         uint256 addedToShelfTimestamp;
         uint256 expiryDateTimestamp;
@@ -31,6 +30,7 @@ contract ItemStorage {
     error ItemNotOwned();
     error ContractOwnerOnly();
     error InvalidRecipient();
+    error InvalidExpiryDate();
 
     // Events, could be used to integrate with external software etc
     event ItemTransferred(uint256 itemId, address sender, address receiver);
@@ -65,12 +65,19 @@ contract ItemStorage {
             revert InvalidItemType();
         }
 
+        uint256 addedToShelf = block.timestamp;
+
+        // Can't add an item if it has already expired
+        if(addedToShelf > expiryDateTimestamp) {
+            revert InvalidExpiryDate();
+        }
+
         // First address in the history is the creator
         address[] memory history = new address[](1);
         history[0] = msg.sender;
 
         // Create and store the item
-        Item memory item = Item(idCounter, itemType, block.timestamp, expiryDateTimestamp, history);
+        Item memory item = Item(itemType, addedToShelf, expiryDateTimestamp, history);
         idMappedItems[idCounter] = item;
         inventory[msg.sender].push(idCounter);
 
@@ -146,7 +153,8 @@ contract ItemStorage {
     // View functions have no cost if they are called externally only
     function getInventory(address adr) view external returns (Item[] memory) {
         uint256[] storage ownedItemIds = inventory[adr];
-        uint256 inventorySize = ownedItemIds.length; // 1 SSTORE instead of m SSTORE
+        // 1 SSTORE instead of m SSTORE
+        uint256 inventorySize = ownedItemIds.length; 
         Item[] memory items = new Item[](inventorySize);
 
         uint256 i;
@@ -157,11 +165,5 @@ contract ItemStorage {
         }
 
         return items;
-    }
-
-    // Get the caller's inventory
-    // View functions have no cost if they are called externally only
-    function getInventory() view external returns (Item[] memory) {
-        return this.getInventory(msg.sender);
     }
 }
