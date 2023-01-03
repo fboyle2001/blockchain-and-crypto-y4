@@ -3,15 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 data = {
-    1: [0.1346, 0.1437, 0.1406, 0.1426],
-    2: [0.1306, 0.2803, 0.2803, 0.2812], 
-    3: [0.1297, 0.4300, 0.4219, 0.4318],
-    4: [0.1446, 0.5935, 0.6154, 0.5944],
-    5: [0.2184, 0.9805, 1.0342, 0.7589],
-    6: [5.0216, 1.7843, 1.7593, 5.0764],
-    7: [128.3011, 121.3415, 43.3940, 43.1945],
-    8: [801.9544, 548.0938, 1375.4983, 840.1393],
-    # 9: [2368.5479]
+    1: [0.1468, 0.1437, 0.1406, 0.1426, 0.1381],
+    2: [0.2854, 0.2803, 0.2803, 0.2812, 0.2788], 
+    3: [0.4300, 0.4300, 0.4219, 0.4318, 0.4244],
+    4: [0.6448, 0.5935, 0.6154, 0.5944, 0.5839],
+    5: [1.0125, 0.9805, 1.0342, 0.7589, 0.7854],
+    6: [5.0216, 1.7843, 1.7593, 5.0764, 5.2126],
+    7: [128.3011, 121.3415, 43.3940, 43.1945, 34.4185],
+    8: [801.9544, 548.0938, 1375.4983, 840.1393, 924.8783],
+    # 9: [2368.5479, 925.0658]
 }
 
 difficulties = []
@@ -48,11 +48,37 @@ def plot_exp_curve(A, B, color):
     y = A * np.exp(B * x)
     plt.plot(x, y, color=color)
 
+print(avg_delta_times)
 plot_exp_curve(A_min, B_min, "green")
 plot_exp_curve(A_avg, B_avg, "orange")
 plot_exp_curve(A_max, B_max, "red")
 
 # Plot the original data points
 plt.xticks([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+plt.xlabel("Difficulty")
+plt.ylabel("Time Taken (s)")
 plt.errorbar(difficulties, avg_delta_times, yerr=err_delta_times, color="blue", fmt=".", capsize=4) # type: ignore
+plt.legend(
+    [
+        f"y = {A_min:.4E} * exp({B_min:.4f}x)",
+        f"y = {A_avg:.4E} * exp({B_avg:.4f}x)",
+        f"y = {A_max:.4E} * exp({B_max:.4f}x)"
+    ]
+)
 plt.show()
+
+hash_rate = 4199376
+
+diffs = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+
+for difficulty in range(1, 11):
+    expected = A_avg * np.exp(B_avg * difficulty)
+    max_ = A_max * np.exp(B_max * difficulty)
+    min_ = A_min * np.exp(B_min * difficulty)
+
+    pm = max(max_ - expected, expected - min_)
+
+    hash_expected = hash_rate * expected
+    hash_pm = hash_rate * pm
+
+    print(difficulty, f"{expected:.4f}+{pm:.4f}", f"{hash_expected:.3E}+{hash_pm:.3E}")

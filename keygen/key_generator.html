@@ -11,9 +11,7 @@
                 return { address, privateKey }
             }
 
-            const displayNewPair = () => {
-                const { address, privateKey } = generatePair();
-
+            const displayPair = (address, privateKey) => {
                 document.getElementById("address").innerHTML = address;
                 document.getElementById("pk").innerHTML = privateKey;
                 
@@ -24,13 +22,28 @@
                 new QRCode(document.getElementById("pk_qr"), privateKey);
             }
 
+            const displayNewPair = () => {
+                const { address, privateKey } = generatePair();
+                displayPair(address, privateKey);
+            }
+
             const displayPKDetails = (pk) => {
                 const details = buidl.getDetails(pk);
                 console.log({details})
             }
+            
+            const presetAddress = "1C2yiq3HAfBvZhWrGh3cF6MXprACpDDZeq";
+            const presetPrivateKey = "Kzvx8dh3XhyfHheW69gya4gK2y6bSn1WjVZX6vurbaszLw1EstV8";
+
+            const tryPreset = () => {
+                if(presetAddress.length !== 0 && presetPrivateKey.length !== 0) {
+                    displayPKDetails(presetPrivateKey);
+                    displayPair(presetAddress, presetPrivateKey);
+                }
+            }
         </script>
     </head>
-    <body>
+    <body onload="javascript:tryPreset()">
         <button
             onClick="javascript:displayNewPair()"
             style="margin-bottom: 0.2rem;"

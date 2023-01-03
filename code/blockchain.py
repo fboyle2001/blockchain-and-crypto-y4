@@ -1503,6 +1503,10 @@ def part_4(blockchain: Blockchain, miners: List[BlockchainIdentity], max_difficu
                 avg_hash_rate = hash_rate_sum / len(miners)
                 success = result["success"]
 
+                # Required to output this when it can't find the nonce in the time limit
+                if not success:
+                    print("It's very difficult to find nonce")
+
                 print(f"Difficulty {difficulty}")
                 print(f"Overall Hash Rate: {hash_rate_sum} hashes/s")
                 print(f"Avg. Hash Rate per Miner: {avg_hash_rate} hashes/s")
